@@ -69,11 +69,22 @@ class BrowserActivity : AppCompatActivity() {
         root.post { cx = root.width / 2f; cy = root.height / 2f; cursor.setPos(cx, cy) }
 
         // Brief on-screen hint so the controls are never a mystery
+        // Brief on-screen hint so the controls are never a mystery
         root.postDelayed({
             Toast.makeText(this,
-                "Up/Down = next/prev video  •  Left/Right = move pointer  •  OK = click  •  Back = home",
+                "Arrows = pointer  •  OK = click  •  ▶▶ = next video  ◀◀ = previous  •  Back = home",
                 Toast.LENGTH_LONG).show()
         }, 700)
+
+        // DIAGNOSTIC: which browser engine is Fire OS forcing on us, and how old?
+        root.postDelayed({
+            try {
+                val pkg = WebView.getCurrentWebViewPackage()
+                Toast.makeText(this,
+                    "Engine: ${pkg?.packageName ?: "unknown"}  v${pkg?.versionName ?: "?"}",
+                    Toast.LENGTH_LONG).show()
+            } catch (_: Throwable) { /* older devices: ignore */ }
+        }, 4200)
     }
 
     /** Build (or rebuild after a renderer crash) the WebView. */
@@ -195,27 +206,21 @@ class BrowserActivity : AppCompatActivity() {
         val move = base * speedMult
 
         when (event.keyCode) {
-            // Left/Right always drive the pointer horizontally
+            // Arrows: full 4-way pointer, always
             KeyEvent.KEYCODE_DPAD_LEFT  -> { moveCursor(-move, 0f); return true }
             KeyEvent.KEYCODE_DPAD_RIGHT -> { moveCursor(move, 0f);  return true }
-
-            // Up/Down: change videos on feed sites, else move the pointer vertically
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                if (site.feedMode) feedPrev() else moveCursor(0f, -move); return true
-            }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (site.feedMode) feedNext() else moveCursor(0f, move); return true
-            }
+            KeyEvent.KEYCODE_DPAD_UP    -> { moveCursor(0f, -move); return true }
+            KeyEvent.KEYCODE_DPAD_DOWN  -> { moveCursor(0f, move);  return true }
 
             // OK clicks whatever the pointer is on
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER -> { clickAt(cx, cy); return true }
 
-            // Channel and FF/RW both change videos too (whichever your remote has)
-            KeyEvent.KEYCODE_CHANNEL_UP,
-            KeyEvent.KEYCODE_MEDIA_REWIND       -> { feedPrev(); return true }
+            // FF / RW = next / previous video (confirmed working on your remote)
             KeyEvent.KEYCODE_CHANNEL_DOWN,
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { feedNext(); return true }
+            KeyEvent.KEYCODE_CHANNEL_UP,
+            KeyEvent.KEYCODE_MEDIA_REWIND       -> { feedPrev(); return true }
 
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY,

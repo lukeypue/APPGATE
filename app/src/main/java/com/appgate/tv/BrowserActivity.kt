@@ -71,7 +71,7 @@ class BrowserActivity : AppCompatActivity() {
         // Brief on-screen hint so the controls are never a mystery
         root.postDelayed({
             Toast.makeText(this,
-                "Arrows = pointer  •  OK = click  •  CH ▲▼ = prev/next video  •  ◀◀ ▶▶ = scrub  •  Back = home",
+                "Up/Down = next/prev video  •  Left/Right = move pointer  •  OK = click  •  Back = home",
                 Toast.LENGTH_LONG).show()
         }, 700)
     }
@@ -90,10 +90,13 @@ class BrowserActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
             loadWithOverviewMode = true
-            builtInZoomControls = false
-            setSupportZoom(false)
+            builtInZoomControls = true
+            displayZoomControls = false
+            setSupportZoom(true)
             userAgentString = if (site.mobileUa) MOBILE_UA else DESKTOP_UA
         }
+        // Render mobile layout at a size that fits a TV screen (tweakable).
+        webView.setInitialScale(0)   // 0 = let the page's own viewport decide
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
@@ -118,6 +121,8 @@ class BrowserActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 injectCleanup()
+                // Some pages finish rendering their content a beat later; re-apply.
+                view.postDelayed({ injectCleanup() }, 1200)
             }
 
             // 1GB sticks: Chromium renderer can get killed under memory pressure.
@@ -159,25 +164,14 @@ class BrowserActivity : AppCompatActivity() {
             .replace("\n", " ").replace("\"", "\\\"")
         val js = """
             (function(){
-              function applyStyle(){
-                var s = document.getElementById('appgate-css');
-                if (!s) { s = document.createElement('style'); s.id='appgate-css';
-                          (document.head||document.documentElement).appendChild(s); }
-                s.textContent = "$css" +
-                  " html,body{height:100vh !important;max-height:100vh !important;" +
-                  "overflow:hidden !important;margin:0 !important;} " +
-                  " ::-webkit-scrollbar{display:none !important;}";
-              }
-              function fixViewport(){
-                var m = document.querySelector('meta[name=viewport]');
-                if (!m){ m=document.createElement('meta'); m.name='viewport';
-                         (document.head||document.documentElement).appendChild(m); }
-                m.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no';
-              }
-              applyStyle(); fixViewport();
-              // TikTok rebuilds its layout after load and wipes our style;
-              // re-apply a few times so the lock actually sticks.
-              var n=0, t=setInterval(function(){ applyStyle(); if(++n>8) clearInterval(t); }, 500);
+              var s = document.getElementById('appgate-css');
+              if (!s) { s = document.createElement('style'); s.id='appgate-css';
+                        (document.head||document.documentElement).appendChild(s); }
+              s.textContent = "$css";
+              var m = document.querySelector('meta[name=viewport]');
+              if (!m){ m=document.createElement('meta'); m.name='viewport';
+                       (document.head||document.documentElement).appendChild(m); }
+              m.content='width=device-width,initial-scale=1';
             })();
         """
         webView.evaluateJavascript(js, null)
@@ -201,28 +195,32 @@ class BrowserActivity : AppCompatActivity() {
         val move = base * speedMult
 
         when (event.keyCode) {
-            // Arrows always drive the pointer — consistent in every app
+            // Left/Right always drive the pointer horizontally
             KeyEvent.KEYCODE_DPAD_LEFT  -> { moveCursor(-move, 0f); return true }
             KeyEvent.KEYCODE_DPAD_RIGHT -> { moveCursor(move, 0f);  return true }
-            KeyEvent.KEYCODE_DPAD_UP    -> { moveCursor(0f, -move); return true }
-            KeyEvent.KEYCODE_DPAD_DOWN  -> { moveCursor(0f, move);  return true }
+
+            // Up/Down: change videos on feed sites, else move the pointer vertically
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                if (site.feedMode) feedPrev() else moveCursor(0f, -move); return true
+            }
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (site.feedMode) feedNext() else moveCursor(0f, move); return true
+            }
 
             // OK clicks whatever the pointer is on
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER -> { clickAt(cx, cy); return true }
 
-            // Channel +/- = previous / next video (the "swipe up/down" on TV)
-            KeyEvent.KEYCODE_CHANNEL_UP   -> { feedPrev(); return true }
-            KeyEvent.KEYCODE_CHANNEL_DOWN -> { feedNext(); return true }
+            // Channel and FF/RW both change videos too (whichever your remote has)
+            KeyEvent.KEYCODE_CHANNEL_UP,
+            KeyEvent.KEYCODE_MEDIA_REWIND       -> { feedPrev(); return true }
+            KeyEvent.KEYCODE_CHANNEL_DOWN,
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { feedNext(); return true }
 
-            // FF / Rewind = scrub within the current video
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { js(jsSeek(5)); return true }
-            KeyEvent.KEYCODE_MEDIA_REWIND       -> { js(jsSeek(-5)); return true }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { js(JS_TOGGLE_VIDEO); return true }
 
-            // Menu = next video too (backup for remotes without channel keys)
             KeyEvent.KEYCODE_MENU -> { feedNext(); return true }
 
             KeyEvent.KEYCODE_BACK -> { handleBack(); return true }

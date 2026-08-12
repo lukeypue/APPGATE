@@ -102,6 +102,20 @@ class BrowserActivity : AppCompatActivity() {
         webView.requestFocus()
 
         webView.webViewClient = object : WebViewClient() {
+            // Keep only normal web pages inside the WebView. Any tiktok://, intent://,
+            // market://, mailto:, etc. link is ignored instead of throwing
+            // "unknown URL scheme" and killing the page.
+            override fun shouldOverrideUrlLoading(
+                view: WebView, request: WebResourceRequest
+            ): Boolean {
+                val u = request.url?.scheme?.lowercase()
+                return if (u == "http" || u == "https") {
+                    false            // load it normally
+                } else {
+                    true             // swallow it, stay on the current page
+                }
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 injectCleanup()
             }

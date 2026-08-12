@@ -1,0 +1,331 @@
+package com.appgate.tv
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.os.Bundle
+import android.os.SystemClock
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
+import android.webkit.*
+import android.widget.FrameLayout
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+
+/**
+ * Hosts one site with TV-native controls.
+ *
+ * Modes:
+ *  - NAV mode (default): D-pad Up/Down = previous/next post (feed sites) or page scroll.
+ *    Center = play/pause the visible video. Menu = switch to cursor mode.
+ *  - CURSOR mode: D-pad moves a pointer, Center clicks (soft keyboard pops on inputs).
+ *
+ * Hardware media keys always control the visible HTML5 video.
+ * Back priority: exit fullscreen video -> web history back -> return to launcher.
+ */
+class BrowserActivity : AppCompatActivity() {
+
+    private lateinit var root: FrameLayout
+    private lateinit var webView: WebView
+    private lateinit var cursor: CursorView
+    private lateinit var site: Site
+
+    private var cursorMode = false
+    private var cx = 0f
+    private var cy = 0f
+    private var speedMult = 1f
+
+    // Fullscreen video handoff
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+
+    private val MOBILE_UA =
+        "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+    private val DESKTOP_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+    @SuppressLint("SetJavaScriptEnabled")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val id = intent.getStringExtra("site_id") ?: "tiktok"
+        site = Prefs.siteById(this, id) ?: SiteCatalog.preloaded[0]
+        speedMult = Prefs.cursorSpeed(this)
+
+        root = FrameLayout(this)
+        cursor = CursorView(this)
+        setContentView(root)
+        buildWebView(restoreUrl = site.url)
+        root.addView(cursor, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        cursor.visibility = View.GONE
+
+        root.post { cx = root.width / 2f; cy = root.height / 2f; cursor.setPos(cx, cy) }
+    }
+
+    /** Build (or rebuild after a renderer crash) the WebView. */
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun buildWebView(restoreUrl: String) {
+        webView = WebView(this)
+        root.addView(webView, 0, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            userAgentString = if (site.mobileUa) MOBILE_UA else DESKTOP_UA
+        }
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+
+        webView.isFocusable = true
+        webView.isFocusableInTouchMode = true
+        webView.requestFocus()
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                injectCleanup()
+            }
+
+            // 1GB sticks: Chromium renderer can get killed under memory pressure.
+            // Rebuild instead of crashing the whole app.
+            override fun onRenderProcessGone(
+                view: WebView, detail: RenderProcessGoneDetail
+            ): Boolean {
+                val lastUrl = view.url ?: site.url
+                root.removeView(view)
+                view.destroy()
+                buildWebView(restoreUrl = lastUrl)
+                Toast.makeText(this@BrowserActivity,
+                    "Reloading (low memory)", Toast.LENGTH_SHORT).show()
+                return true
+            }
+        }
+
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                customView = view
+                customViewCallback = callback
+                webView.visibility = View.GONE
+                root.addView(view, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            }
+            override fun onHideCustomView() {
+                customView?.let { root.removeView(it) }
+                customView = null
+                customViewCallback = null
+                webView.visibility = View.VISIBLE
+            }
+        }
+
+        webView.loadUrl(restoreUrl)
+    }
+
+    private fun injectCleanup() {
+        val css = (SiteCatalog.COMMON_CSS + "\n" + site.cleanupCss)
+            .replace("\n", " ").replace("\"", "\\\"")
+        val js = """
+            (function(){
+              var s = document.getElementById('appgate-css');
+              if (!s) { s = document.createElement('style'); s.id='appgate-css';
+                        document.head.appendChild(s); }
+              s.textContent = "$css";
+            })();
+        """
+        webView.evaluateJavascript(js, null)
+    }
+
+    // ---------------- Key handling ----------------
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // While the soft keyboard is open, let it handle everything except Back
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        if (imm.isAcceptingText && event.keyCode != KeyEvent.KEYCODE_BACK) {
+            return super.dispatchKeyEvent(event)
+        }
+
+        if (event.action != KeyEvent.ACTION_DOWN) {
+            // consume the UP of keys we handle on DOWN so the page doesn't double-act
+            return if (handledKeys.contains(event.keyCode)) true
+                   else super.dispatchKeyEvent(event)
+        }
+
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_MENU -> { toggleCursorMode(); return true }
+
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY,
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> { js(JS_TOGGLE_VIDEO); return true }
+
+            KeyEvent.KEYCODE_MEDIA_REWIND -> { js(jsSeek(-10)); return true }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { js(jsSeek(10)); return true }
+
+            KeyEvent.KEYCODE_BACK -> { handleBack(); return true }
+        }
+
+        return if (cursorMode) cursorKeys(event) else navKeys(event)
+    }
+
+    private val handledKeys = setOf(
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+        KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
+        KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_REWIND,
+        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+    )
+
+    /** NAV mode: feed snap / page scroll / play-pause. */
+    private fun navKeys(event: KeyEvent): Boolean {
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (site.feedMode) js(JS_FEED_NEXT) else webView.scrollBy(0, 400)
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                if (site.feedMode) js(JS_FEED_PREV) else webView.scrollBy(0, -400)
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { webView.scrollBy(-300, 0); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { webView.scrollBy(300, 0); return true }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                js(JS_TOGGLE_VIDEO); return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** CURSOR mode: pointer + click. */
+    private fun cursorKeys(event: KeyEvent): Boolean {
+        val base = if (event.repeatCount > 3) 42f else 18f
+        val move = base * speedMult
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> { moveCursor(-move, 0f); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { moveCursor(move, 0f); return true }
+            KeyEvent.KEYCODE_DPAD_UP -> { moveCursor(0f, -move); return true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { moveCursor(0f, move); return true }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                clickAt(cx, cy); return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun toggleCursorMode() {
+        cursorMode = !cursorMode
+        cursor.visibility = if (cursorMode) View.VISIBLE else View.GONE
+        Toast.makeText(this,
+            if (cursorMode) "Cursor on — arrows move, center clicks"
+            else "Cursor off — up/down browses the feed",
+            Toast.LENGTH_SHORT).show()
+    }
+
+    private fun handleBack() {
+        when {
+            customView != null -> customViewCallback?.onCustomViewHidden()
+            webView.canGoBack() -> webView.goBack()
+            else -> finish()   // back to AppGate launcher
+        }
+    }
+
+    private fun moveCursor(dx: Float, dy: Float) {
+        cx = (cx + dx).coerceIn(0f, root.width.toFloat())
+        cy += dy
+        if (cy < 0f) { webView.scrollBy(0, -220); cy = 0f }
+        if (cy > root.height) { webView.scrollBy(0, 220); cy = root.height.toFloat() }
+        cursor.setPos(cx, cy)
+    }
+
+    private fun clickAt(x: Float, y: Float) {
+        val t = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0)
+        val up = MotionEvent.obtain(t, t + 70, MotionEvent.ACTION_UP, x, y, 0)
+        webView.dispatchTouchEvent(down); webView.dispatchTouchEvent(up)
+        down.recycle(); up.recycle()
+        cursor.pulse()
+    }
+
+    private fun js(code: String) = webView.evaluateJavascript(code, null)
+
+    override fun onPause() {
+        super.onPause()
+        CookieManager.getInstance().flush()   // keep logins across launches
+    }
+
+    override fun onDestroy() {
+        (webView.parent as? ViewGroup)?.removeView(webView)
+        webView.destroy()
+        super.onDestroy()
+    }
+
+    // ---------------- Injected JS ----------------
+
+    companion object {
+        /** Snap to next/prev item: try ArrowDown/Up key (TikTok desktop supports it),
+         *  plus a full-viewport smooth scroll as a universal fallback. */
+        private const val JS_FEED_NEXT = """
+            (function(){
+              try { document.dispatchEvent(new KeyboardEvent('keydown',
+                {key:'ArrowDown', keyCode:40, which:40, bubbles:true})); } catch(e){}
+              window.scrollBy({top: window.innerHeight, behavior: 'smooth'});
+            })();
+        """
+        private const val JS_FEED_PREV = """
+            (function(){
+              try { document.dispatchEvent(new KeyboardEvent('keydown',
+                {key:'ArrowUp', keyCode:38, which:38, bubbles:true})); } catch(e){}
+              window.scrollBy({top: -window.innerHeight, behavior: 'smooth'});
+            })();
+        """
+
+        /** Play/pause whichever video is most on-screen. */
+        private const val JS_TOGGLE_VIDEO = """
+            (function(){
+              var vids = Array.from(document.querySelectorAll('video'));
+              if (!vids.length) return;
+              var mid = window.innerHeight/2, best = vids[0], bd = 1e9;
+              vids.forEach(function(v){
+                var r = v.getBoundingClientRect();
+                var d = Math.abs((r.top+r.bottom)/2 - mid);
+                if (d < bd) { bd = d; best = v; }
+              });
+              if (best.paused) best.play(); else best.pause();
+            })();
+        """
+
+        private fun jsSeek(sec: Int) = """
+            (function(){
+              var v = document.querySelector('video');
+              if (v) v.currentTime = Math.max(0, v.currentTime + ($sec));
+            })();
+        """
+    }
+
+    /** Pointer drawn above the WebView in cursor mode. */
+    private class CursorView(context: Context) : View(context) {
+        private var x = 0f; private var y = 0f; private var r = 14f
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(210, 255, 255, 255); style = Paint.Style.FILL }
+        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(235, 0, 200, 255); style = Paint.Style.STROKE
+            strokeWidth = 5f }
+
+        fun setPos(nx: Float, ny: Float) { x = nx; y = ny; invalidate() }
+        fun pulse() { r = 22f; invalidate(); postDelayed({ r = 14f; invalidate() }, 120) }
+        override fun onDraw(c: Canvas) {
+            c.drawCircle(x, y, r, fill); c.drawCircle(x, y, r, ring)
+        }
+    }
+}

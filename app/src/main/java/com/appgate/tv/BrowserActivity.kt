@@ -84,6 +84,8 @@ class BrowserActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false
             useWideViewPort = true
             loadWithOverviewMode = true
+            builtInZoomControls = false
+            setSupportZoom(false)
             userAgentString = if (site.mobileUa) MOBILE_UA else DESKTOP_UA
         }
         CookieManager.getInstance().setAcceptCookie(true)
@@ -133,7 +135,13 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun injectCleanup() {
-        val css = (SiteCatalog.COMMON_CSS + "\n" + site.cleanupCss)
+        // Force the page (and its full-height containers) to match the TV screen,
+        // so nothing spills off the bottom edge.
+        val heightLock = """
+            html, body { height: 100vh !important; max-height: 100vh !important;
+                         overflow: hidden !important; }
+        """
+        val css = (SiteCatalog.COMMON_CSS + "\n" + heightLock + "\n" + site.cleanupCss)
             .replace("\n", " ").replace("\"", "\\\"")
         val js = """
             (function(){
@@ -141,6 +149,11 @@ class BrowserActivity : AppCompatActivity() {
               if (!s) { s = document.createElement('style'); s.id='appgate-css';
                         document.head.appendChild(s); }
               s.textContent = "$css";
+              // Ensure a proper mobile viewport meta so layout matches screen width
+              var m = document.querySelector('meta[name=viewport]');
+              if (!m) { m = document.createElement('meta'); m.name='viewport';
+                        document.head.appendChild(m); }
+              m.content = 'width=device-width, initial-scale=1, maximum-scale=1';
             })();
         """
         webView.evaluateJavascript(js, null)
@@ -273,20 +286,60 @@ class BrowserActivity : AppCompatActivity() {
     // ---------------- Injected JS ----------------
 
     companion object {
-        /** Snap to next/prev item: try ArrowDown/Up key (TikTok desktop supports it),
-         *  plus a full-viewport smooth scroll as a universal fallback. */
+        /** Move to the next/previous item. Strategy, in order:
+         *  1) Find the scrolling feed container (the element that actually scrolls,
+         *     which on mobile TikTok is usually NOT window) and scroll it by one
+         *     screen height. This is what makes the feed advance.
+         *  2) Fall back to scrolling the nearest video into view.
+         *  3) Fall back to window scroll + arrow key for other sites. */
         private const val JS_FEED_NEXT = """
             (function(){
+              var vh = window.innerHeight;
+              function scroller(){
+                var els = document.querySelectorAll('*'); 
+                for (var i=0;i<els.length;i++){
+                  var e = els[i], s = getComputedStyle(e);
+                  if ((s.overflowY==='scroll'||s.overflowY==='auto') &&
+                      e.scrollHeight > e.clientHeight + 50 &&
+                      e.clientHeight > vh*0.5) return e;
+                }
+                return null;
+              }
+              var c = scroller();
+              if (c) { c.scrollBy({top: c.clientHeight, behavior:'smooth'}); return; }
+              var vids = document.querySelectorAll('video');
+              if (vids.length){
+                var mid = vh/2, idx = 0, bd = 1e9;
+                for (var j=0;j<vids.length;j++){
+                  var r = vids[j].getBoundingClientRect();
+                  var d = Math.abs((r.top+r.bottom)/2 - mid);
+                  if (d<bd){bd=d; idx=j;}
+                }
+                if (vids[idx+1]) { vids[idx+1].scrollIntoView({behavior:'smooth'}); return; }
+              }
               try { document.dispatchEvent(new KeyboardEvent('keydown',
-                {key:'ArrowDown', keyCode:40, which:40, bubbles:true})); } catch(e){}
-              window.scrollBy({top: window.innerHeight, behavior: 'smooth'});
+                {key:'ArrowDown',keyCode:40,which:40,bubbles:true})); } catch(e){}
+              window.scrollBy({top: vh, behavior:'smooth'});
             })();
         """
         private const val JS_FEED_PREV = """
             (function(){
+              var vh = window.innerHeight;
+              function scroller(){
+                var els = document.querySelectorAll('*');
+                for (var i=0;i<els.length;i++){
+                  var e = els[i], s = getComputedStyle(e);
+                  if ((s.overflowY==='scroll'||s.overflowY==='auto') &&
+                      e.scrollHeight > e.clientHeight + 50 &&
+                      e.clientHeight > vh*0.5) return e;
+                }
+                return null;
+              }
+              var c = scroller();
+              if (c) { c.scrollBy({top: -c.clientHeight, behavior:'smooth'}); return; }
               try { document.dispatchEvent(new KeyboardEvent('keydown',
-                {key:'ArrowUp', keyCode:38, which:38, bubbles:true})); } catch(e){}
-              window.scrollBy({top: -window.innerHeight, behavior: 'smooth'});
+                {key:'ArrowUp',keyCode:38,which:38,bubbles:true})); } catch(e){}
+              window.scrollBy({top: -vh, behavior:'smooth'});
             })();
         """
 

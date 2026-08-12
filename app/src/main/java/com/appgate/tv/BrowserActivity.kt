@@ -71,7 +71,7 @@ class BrowserActivity : AppCompatActivity() {
         // Brief on-screen hint so the controls are never a mystery
         root.postDelayed({
             Toast.makeText(this,
-                "Arrows = move pointer  •  OK = click  •  ◀◀ ▶▶ = prev/next video  •  Back = home",
+                "Arrows = pointer  •  OK = click  •  CH ▲▼ = prev/next video  •  ◀◀ ▶▶ = scrub  •  Back = home",
                 Toast.LENGTH_LONG).show()
         }, 700)
     }
@@ -155,25 +155,29 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun injectCleanup() {
-        // Force the page (and its full-height containers) to match the TV screen,
-        // so nothing spills off the bottom edge.
-        val heightLock = """
-            html, body { height: 100vh !important; max-height: 100vh !important;
-                         overflow: hidden !important; }
-        """
-        val css = (SiteCatalog.COMMON_CSS + "\n" + heightLock + "\n" + site.cleanupCss)
+        val css = (SiteCatalog.COMMON_CSS + "\n" + site.cleanupCss)
             .replace("\n", " ").replace("\"", "\\\"")
         val js = """
             (function(){
-              var s = document.getElementById('appgate-css');
-              if (!s) { s = document.createElement('style'); s.id='appgate-css';
-                        document.head.appendChild(s); }
-              s.textContent = "$css";
-              // Ensure a proper mobile viewport meta so layout matches screen width
-              var m = document.querySelector('meta[name=viewport]');
-              if (!m) { m = document.createElement('meta'); m.name='viewport';
-                        document.head.appendChild(m); }
-              m.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+              function applyStyle(){
+                var s = document.getElementById('appgate-css');
+                if (!s) { s = document.createElement('style'); s.id='appgate-css';
+                          (document.head||document.documentElement).appendChild(s); }
+                s.textContent = "$css" +
+                  " html,body{height:100vh !important;max-height:100vh !important;" +
+                  "overflow:hidden !important;margin:0 !important;} " +
+                  " ::-webkit-scrollbar{display:none !important;}";
+              }
+              function fixViewport(){
+                var m = document.querySelector('meta[name=viewport]');
+                if (!m){ m=document.createElement('meta'); m.name='viewport';
+                         (document.head||document.documentElement).appendChild(m); }
+                m.content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no';
+              }
+              applyStyle(); fixViewport();
+              // TikTok rebuilds its layout after load and wipes our style;
+              // re-apply a few times so the lock actually sticks.
+              var n=0, t=setInterval(function(){ applyStyle(); if(++n>8) clearInterval(t); }, 500);
             })();
         """
         webView.evaluateJavascript(js, null)
@@ -207,14 +211,18 @@ class BrowserActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER -> { clickAt(cx, cy); return true }
 
-            // Dedicated video controls, never conflict with the pointer
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { feedNext(); return true }
-            KeyEvent.KEYCODE_MEDIA_REWIND       -> { feedPrev(); return true }
+            // Channel +/- = previous / next video (the "swipe up/down" on TV)
+            KeyEvent.KEYCODE_CHANNEL_UP   -> { feedPrev(); return true }
+            KeyEvent.KEYCODE_CHANNEL_DOWN -> { feedNext(); return true }
+
+            // FF / Rewind = scrub within the current video
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { js(jsSeek(5)); return true }
+            KeyEvent.KEYCODE_MEDIA_REWIND       -> { js(jsSeek(-5)); return true }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { js(JS_TOGGLE_VIDEO); return true }
 
-            // Menu = jump to next video too (many remotes lack the ◀◀ ▶▶ keys)
+            // Menu = next video too (backup for remotes without channel keys)
             KeyEvent.KEYCODE_MENU -> { feedNext(); return true }
 
             KeyEvent.KEYCODE_BACK -> { handleBack(); return true }
@@ -234,6 +242,7 @@ class BrowserActivity : AppCompatActivity() {
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
         KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_CHANNEL_DOWN,
         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
         KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_REWIND,
         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
@@ -248,10 +257,9 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun moveCursor(dx: Float, dy: Float) {
+        // Keep the pointer fully on-screen; no edge-scrolling into blank zones.
         cx = (cx + dx).coerceIn(0f, root.width.toFloat())
-        cy += dy
-        if (cy < 0f) { webView.scrollBy(0, -220); cy = 0f }
-        if (cy > root.height) { webView.scrollBy(0, 220); cy = root.height.toFloat() }
+        cy = (cy + dy).coerceIn(0f, root.height.toFloat())
         cursor.setPos(cx, cy)
     }
 
@@ -349,6 +357,21 @@ class BrowserActivity : AppCompatActivity() {
                 if (d < bd) { bd = d; best = v; }
               });
               if (best.paused) best.play(); else best.pause();
+            })();
+        """
+
+        /** Scrub the most-centered video by N seconds. */
+        private fun jsSeek(sec: Int) = """
+            (function(){
+              var vids = Array.from(document.querySelectorAll('video'));
+              if (!vids.length) return;
+              var mid = window.innerHeight/2, best = vids[0], bd = 1e9;
+              vids.forEach(function(v){
+                var r = v.getBoundingClientRect();
+                var d = Math.abs((r.top+r.bottom)/2 - mid);
+                if (d < bd){ bd = d; best = v; }
+              });
+              best.currentTime = Math.max(0, best.currentTime + ($sec));
             })();
         """
     }

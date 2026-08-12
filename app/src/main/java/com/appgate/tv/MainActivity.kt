@@ -59,7 +59,8 @@ class MainActivity : ComponentActivity() {
         var longPressSite by remember { mutableStateOf<Site?>(null) }
 
         Column(
-            Modifier.fillMaxSize().background(Color(0xFF0E1116)).padding(32.dp)
+            Modifier.fillMaxSize().background(Color(0xFF0E1116))
+                .padding(start = 48.dp, end = 48.dp, top = 40.dp, bottom = 40.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("AppGate", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)

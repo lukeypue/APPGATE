@@ -28,7 +28,7 @@ object SiteCatalog {
 
     val preloaded: List<Site> = listOf(
         Site(
-            id = "tiktok", name = "TikTok", url = "https://www.tiktok.com",
+            id = "tiktok", name = "TikTok", url = "https://www.tiktok.com/foryou",
             color = 0xFF010101, mobileUa = true, feedMode = true,
             cleanupCss = """
                 [data-e2e="download-guide"], [class*="DivDownload"],

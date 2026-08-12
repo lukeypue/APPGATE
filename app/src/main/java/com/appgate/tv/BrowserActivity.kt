@@ -35,7 +35,6 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var cursor: CursorView
     private lateinit var site: Site
 
-    private var cursorMode = false
     private var cx = 0f
     private var cy = 0f
     private var speedMult = 1f
@@ -45,11 +44,11 @@ class BrowserActivity : AppCompatActivity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     private val MOBILE_UA =
-        "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+        "Mozilla/5.0 (Linux; Android 13; SM-S911U) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     private val DESKTOP_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,9 +64,16 @@ class BrowserActivity : AppCompatActivity() {
         buildWebView(restoreUrl = site.url)
         root.addView(cursor, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        cursor.visibility = View.GONE
+        cursor.visibility = View.VISIBLE   // cursor visible the moment you enter
 
         root.post { cx = root.width / 2f; cy = root.height / 2f; cursor.setPos(cx, cy) }
+
+        // Brief on-screen hint so the controls are never a mystery
+        root.postDelayed({
+            Toast.makeText(this,
+                "Arrows = move pointer  •  OK = click  •  ◀◀ ▶▶ = prev/next video  •  Back = home",
+                Toast.LENGTH_LONG).show()
+        }, 700)
     }
 
     /** Build (or rebuild after a renderer crash) the WebView. */
@@ -169,25 +175,44 @@ class BrowserActivity : AppCompatActivity() {
         }
 
         if (event.action != KeyEvent.ACTION_DOWN) {
-            // consume the UP of keys we handle on DOWN so the page doesn't double-act
             return if (handledKeys.contains(event.keyCode)) true
                    else super.dispatchKeyEvent(event)
         }
 
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_MENU -> { toggleCursorMode(); return true }
+        val base = if (event.repeatCount > 3) 42f else 18f
+        val move = base * speedMult
 
+        when (event.keyCode) {
+            // Arrows always drive the pointer — consistent in every app
+            KeyEvent.KEYCODE_DPAD_LEFT  -> { moveCursor(-move, 0f); return true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { moveCursor(move, 0f);  return true }
+            KeyEvent.KEYCODE_DPAD_UP    -> { moveCursor(0f, -move); return true }
+            KeyEvent.KEYCODE_DPAD_DOWN  -> { moveCursor(0f, move);  return true }
+
+            // OK clicks whatever the pointer is on
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER -> { clickAt(cx, cy); return true }
+
+            // Dedicated video controls, never conflict with the pointer
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { feedNext(); return true }
+            KeyEvent.KEYCODE_MEDIA_REWIND       -> { feedPrev(); return true }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { js(JS_TOGGLE_VIDEO); return true }
 
-            KeyEvent.KEYCODE_MEDIA_REWIND -> { js(jsSeek(-10)); return true }
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { js(jsSeek(10)); return true }
+            // Menu = jump to next video too (many remotes lack the ◀◀ ▶▶ keys)
+            KeyEvent.KEYCODE_MENU -> { feedNext(); return true }
 
             KeyEvent.KEYCODE_BACK -> { handleBack(); return true }
         }
+        return super.dispatchKeyEvent(event)
+    }
 
-        return if (cursorMode) cursorKeys(event) else navKeys(event)
+    private fun feedNext() {
+        if (site.feedMode) js(JS_FEED_NEXT) else webView.scrollBy(0, 500)
+    }
+    private fun feedPrev() {
+        if (site.feedMode) js(JS_FEED_PREV) else webView.scrollBy(0, -500)
     }
 
     private val handledKeys = setOf(
@@ -199,51 +224,6 @@ class BrowserActivity : AppCompatActivity() {
         KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_REWIND,
         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
     )
-
-    /** NAV mode: feed snap / page scroll / play-pause. */
-    private fun navKeys(event: KeyEvent): Boolean {
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (site.feedMode) js(JS_FEED_NEXT) else webView.scrollBy(0, 400)
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                if (site.feedMode) js(JS_FEED_PREV) else webView.scrollBy(0, -400)
-                return true
-            }
-            KeyEvent.KEYCODE_DPAD_LEFT -> { webView.scrollBy(-300, 0); return true }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { webView.scrollBy(300, 0); return true }
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                js(JS_TOGGLE_VIDEO); return true
-            }
-        }
-        return super.dispatchKeyEvent(event)
-    }
-
-    /** CURSOR mode: pointer + click. */
-    private fun cursorKeys(event: KeyEvent): Boolean {
-        val base = if (event.repeatCount > 3) 42f else 18f
-        val move = base * speedMult
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT -> { moveCursor(-move, 0f); return true }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { moveCursor(move, 0f); return true }
-            KeyEvent.KEYCODE_DPAD_UP -> { moveCursor(0f, -move); return true }
-            KeyEvent.KEYCODE_DPAD_DOWN -> { moveCursor(0f, move); return true }
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                clickAt(cx, cy); return true
-            }
-        }
-        return super.dispatchKeyEvent(event)
-    }
-
-    private fun toggleCursorMode() {
-        cursorMode = !cursorMode
-        cursor.visibility = if (cursorMode) View.VISIBLE else View.GONE
-        Toast.makeText(this,
-            if (cursorMode) "Cursor on — arrows move, center clicks"
-            else "Cursor off — up/down browses the feed",
-            Toast.LENGTH_SHORT).show()
-    }
 
     private fun handleBack() {
         when {
@@ -355,13 +335,6 @@ class BrowserActivity : AppCompatActivity() {
                 if (d < bd) { bd = d; best = v; }
               });
               if (best.paused) best.play(); else best.pause();
-            })();
-        """
-
-        private fun jsSeek(sec: Int) = """
-            (function(){
-              var v = document.querySelector('video');
-              if (v) v.currentTime = Math.max(0, v.currentTime + ($sec));
             })();
         """
     }

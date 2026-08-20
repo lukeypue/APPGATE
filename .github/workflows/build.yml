@@ -39,6 +39,10 @@ jobs:
           fi
           echo "Building in: $(cat "$GITHUB_OUTPUT")"
 
+      - name: Run unit tests
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: gradle testDebugUnitTest --stacktrace
+
       - name: Build debug APK
         working-directory: ${{ steps.proj.outputs.dir }}
         run: gradle assembleDebug --stacktrace

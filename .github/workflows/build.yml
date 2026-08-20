@@ -2,6 +2,7 @@ name: Build AppGate APK
 
 on:
   push:
+  pull_request:
   workflow_dispatch:        # adds a manual "Run workflow" button in the Actions tab
 
 jobs:

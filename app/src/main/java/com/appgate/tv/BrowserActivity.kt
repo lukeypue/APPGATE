@@ -17,7 +17,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
-import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -27,54 +26,42 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
 /**
- * Hosts a single website with Fire TV remote controls.
+ * AppGate v1: one lightweight, remote-friendly TikTok web experience.
  *
- * D-pad always moves the on-screen pointer and Select clicks it. Channel Down
- * advances a feed and Channel Up returns to the previous item. Media buttons
- * retain normal media meaning. Back dismisses the keyboard/fullscreen first,
- * then immediately returns to the AppGate launcher.
+ * There is no URL bar and no generic site launcher. D-pad moves AppGate's
+ * pointer, OK clicks, Channel Down/Fast Forward move to the next feed item,
+ * Channel Up/Rewind return to the previous item, and Menu opens AppGate help,
+ * Home and verified hashtag/profile search.
  */
 class BrowserActivity : AppCompatActivity() {
 
     private lateinit var root: FrameLayout
     private lateinit var webView: WebView
     private lateinit var cursor: CursorView
-    private lateinit var site: Site
 
     private var cursorX = 0f
     private var cursorY = 0f
-    private var cursorSpeed = 1f
     private var keyboardRequested = false
     private var feedMoveInProgress = false
-    private var pageLooksBlank = false
+    private var activeDialog: AlertDialog? = null
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
-
-    // TikTok now has an official desktop web experience. A desktop identity is
-    // more stable on a landscape TV than pretending the Fire TV is a phone.
-    private val desktopUserAgent =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    private val mobileUserAgent =
-        "Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    private var lastGoodUrl: String = TikTokNavigation.HOME_URL
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val id = intent.getStringExtra("site_id") ?: "tiktok"
-        site = Prefs.siteById(this, id) ?: SiteCatalog.preloaded.first()
-        cursorSpeed = Prefs.cursorSpeed(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        root = FrameLayout(this)
+        root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         cursor = CursorView(this).apply {
             isClickable = false
             isFocusable = false
@@ -82,8 +69,12 @@ class BrowserActivity : AppCompatActivity() {
         }
         setContentView(root)
 
-        val restoreUrl = savedInstanceState?.getString(STATE_URL) ?: site.url
+        val restoreUrl = savedInstanceState?.getString(STATE_URL)
+            ?.takeUnless { TikTokNavigation.shouldBlock(it) }
+            ?: TikTokNavigation.HOME_URL
+        lastGoodUrl = restoreUrl
         buildWebView(restoreUrl)
+
         root.addView(
             cursor,
             FrameLayout.LayoutParams(
@@ -100,7 +91,13 @@ class BrowserActivity : AppCompatActivity() {
             cursor.setPos(cursorX, cursorY)
         }
 
-        root.postDelayed({ showControlHint() }, 650)
+        root.postDelayed({
+            Toast.makeText(
+                this,
+                "Menu: AppGate controls/search  •  CH ↓ or FF: next  •  CH ↑ or RW: previous",
+                Toast.LENGTH_LONG
+            ).show()
+        }, 800L)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -132,11 +129,12 @@ class BrowserActivity : AppCompatActivity() {
             setGeolocationEnabled(false)
             cacheMode = WebSettings.LOAD_DEFAULT
             loadsImagesAutomatically = true
-            userAgentString = if (site.mobileUa) mobileUserAgent else desktopUserAgent
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                offscreenPreRaster = false
-            }
+            // Deliberately keep Amazon WebView's real/default user-agent. Silk
+            // was stable on the test Fire TV; spoofing a different Chrome build
+            // can give modern TikTok contradictory UA/client-hint information.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) offscreenPreRaster = false
         }
+        webView.setInitialScale(0)
 
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
@@ -148,32 +146,30 @@ class BrowserActivity : AppCompatActivity() {
         webView.requestFocus()
 
         webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(
-                view: WebView,
-                url: String,
-                favicon: android.graphics.Bitmap?
-            ) {
-                pageLooksBlank = false
-            }
-
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
             ): Boolean {
-                val scheme = request.url?.scheme?.lowercase()
-                return scheme != "http" && scheme != "https"
+                val url = request.url.toString()
+                if (TikTokNavigation.shouldBlock(url)) {
+                    if (request.isForMainFrame) showBlockedLinkMessage()
+                    return true
+                }
+                return false
             }
 
             @Deprecated("Required for WebView navigation on API 22")
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                val scheme = android.net.Uri.parse(url).scheme?.lowercase()
-                return scheme != "http" && scheme != "https"
+                if (TikTokNavigation.shouldBlock(url)) {
+                    showBlockedLinkMessage()
+                    return true
+                }
+                return false
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                injectTvHelpers()
-                view.postDelayed({ injectTvHelpers() }, 900)
-                view.postDelayed({ checkPageHealth() }, 2_500)
+                if (!TikTokNavigation.shouldBlock(url)) lastGoodUrl = url
+                injectTvCleanup()
             }
 
             override fun onReceivedError(
@@ -184,7 +180,7 @@ class BrowserActivity : AppCompatActivity() {
                 if (request.isForMainFrame) {
                     Toast.makeText(
                         this@BrowserActivity,
-                        "The website did not load. Check the connection and try again.",
+                        "TikTok did not load. Press Menu for Home or Search.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -194,13 +190,15 @@ class BrowserActivity : AppCompatActivity() {
                 view: WebView,
                 detail: RenderProcessGoneDetail
             ): Boolean {
-                val lastUrl = view.url ?: site.url
+                val restore = view.url
+                    ?.takeUnless { TikTokNavigation.shouldBlock(it) }
+                    ?: lastGoodUrl
                 root.removeView(view)
                 view.destroy()
-                buildWebView(lastUrl)
+                buildWebView(restore)
                 Toast.makeText(
                     this@BrowserActivity,
-                    "Reloading after low memory",
+                    "AppGate reloaded TikTok after low memory",
                     Toast.LENGTH_SHORT
                 ).show()
                 return true
@@ -208,14 +206,6 @@ class BrowserActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
-                android.util.Log.d(
-                    "AppGateWeb",
-                    "${message.message()} @ ${message.sourceId()}:${message.lineNumber()}"
-                )
-                return true
-            }
-
             override fun onShowCustomView(view: View, callback: CustomViewCallback) {
                 if (customView != null) {
                     callback.onCustomViewHidden()
@@ -243,8 +233,7 @@ class BrowserActivity : AppCompatActivity() {
             }
 
             override fun onPermissionRequest(request: PermissionRequest) {
-                // AppGate does not request camera or microphone permissions.
-                // Browsing and commenting remain available without them.
+                // v1 needs no camera/microphone/device permissions.
                 request.deny()
             }
         }
@@ -252,11 +241,12 @@ class BrowserActivity : AppCompatActivity() {
         webView.loadUrl(restoreUrl)
     }
 
-    private fun injectTvHelpers() {
-        val css = (SiteCatalog.COMMON_CSS + "\n" + site.cleanupCss)
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", " ")
+    /**
+     * Keep cleanup intentionally narrow. Do not resize html/body, force 100vh,
+     * or scale the whole document: those approaches moved hit targets and cut
+     * off controls during earlier Fire TV testing.
+     */
+    private fun injectTvCleanup() {
         val script = """
             (function(){
               var style = document.getElementById('appgate-tv-css');
@@ -265,14 +255,15 @@ class BrowserActivity : AppCompatActivity() {
                 style.id = 'appgate-tv-css';
                 (document.head || document.documentElement).appendChild(style);
               }
-              style.textContent = "$css";
-              var viewport = document.querySelector('meta[name=viewport]');
-              if (!viewport) {
-                viewport = document.createElement('meta');
-                viewport.name = 'viewport';
-                (document.head || document.documentElement).appendChild(viewport);
-              }
-              viewport.content = 'width=device-width,initial-scale=1';
+              style.textContent = `
+                [class*="download-app"], [class*="app-banner"], [class*="AppBanner"],
+                [class*="open-app"], [class*="OpenApp"], [class*="smart-banner"],
+                [id*="smart-banner"], [data-e2e="download-app"],
+                [data-e2e="download-guide"], [class*="DivDownload"],
+                [class*="GuideContainer"], [class*="BottomBanner"] {
+                  display: none !important;
+                }
+              `;
             })();
         """.trimIndent()
         webView.evaluateJavascript(script, null)
@@ -281,10 +272,11 @@ class BrowserActivity : AppCompatActivity() {
     // ---------------- Remote handling ----------------
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val inputMethod = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        activeDialog?.takeIf { it.isShowing }?.let {
+            return super.dispatchKeyEvent(event)
+        }
 
-        // Once an editor owns input, the Fire TV keyboard must receive normal
-        // D-pad and Select events. Back is kept so we can dismiss it cleanly.
+        val inputMethod = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         if ((keyboardRequested || inputMethod.isAcceptingText) &&
             event.keyCode != KeyEvent.KEYCODE_BACK
         ) {
@@ -292,138 +284,148 @@ class BrowserActivity : AppCompatActivity() {
         }
 
         if (event.action != KeyEvent.ACTION_DOWN) {
-            return if (handledKeys.contains(event.keyCode)) true
+            return if (HANDLED_KEYS.contains(event.keyCode)) true
             else super.dispatchKeyEvent(event)
         }
 
         val baseMovement = if (event.repeatCount > 3) 44f else 19f
-        val movement = baseMovement * cursorSpeed
-
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> {
-                moveCursor(-movement, 0f)
-                return true
+                moveCursor(-baseMovement, 0f); return true
             }
             KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                moveCursor(movement, 0f)
-                return true
+                moveCursor(baseMovement, 0f); return true
             }
             KeyEvent.KEYCODE_DPAD_UP -> {
-                moveCursor(0f, -movement)
-                return true
+                moveCursor(0f, -baseMovement); return true
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
-                moveCursor(0f, movement)
-                return true
+                moveCursor(0f, baseMovement); return true
             }
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_BUTTON_A -> {
-                clickAt(cursorX, cursorY)
-                return true
+                clickAt(cursorX, cursorY); return true
             }
-            KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                moveFeed(next = true)
-                return true
+            KeyEvent.KEYCODE_CHANNEL_DOWN,
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+            KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                moveFeed(next = true); return true
             }
-            KeyEvent.KEYCODE_CHANNEL_UP -> {
-                moveFeed(next = false)
-                return true
+            KeyEvent.KEYCODE_CHANNEL_UP,
+            KeyEvent.KEYCODE_MEDIA_REWIND,
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                moveFeed(next = false); return true
             }
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                runJs(JS_TOGGLE_VIDEO)
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                runJs(jsSeek(-10))
-                return true
-            }
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                runJs(jsSeek(10))
-                return true
+                runJs(JS_TOGGLE_VIDEO); return true
             }
             KeyEvent.KEYCODE_MENU -> {
-                if (pageLooksBlank) {
-                    pageLooksBlank = false
-                    webView.reload()
-                    Toast.makeText(this, "Reloading website", Toast.LENGTH_SHORT).show()
-                } else {
-                    showControlHint()
-                }
-                return true
+                showAppGateMenu(); return true
             }
             KeyEvent.KEYCODE_BACK -> {
-                handleBack()
-                return true
+                handleBack(); return true
             }
         }
         return super.dispatchKeyEvent(event)
     }
 
-    private fun showControlHint() {
+    private fun showAppGateMenu() {
+        if (activeDialog?.isShowing == true) return
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("AppGate")
+            .setMessage(
+                "TikTok web experience — supported now\n" +
+                    "More web services coming later.\n\n" +
+                    "D-pad: move pointer\n" +
+                    "OK: click\n" +
+                    "Channel Down or Fast Forward: next video\n" +
+                    "Channel Up or Rewind: previous video\n" +
+                    "Play/Pause: play or pause\n" +
+                    "Back: previous page / exit\n" +
+                    "Menu: AppGate controls\n\n" +
+                    "Search uses TV-friendly TikTok hashtag/profile pages. " +
+                    "Comments can be read; posting is not guaranteed in this first version."
+            )
+            .setPositiveButton("Search") { _, _ -> root.post { showSearchDialog() } }
+            .setNeutralButton("Home") { _, _ -> webView.loadUrl(TikTokNavigation.HOME_URL) }
+            .setNegativeButton("Close", null)
+            .create()
+        dialog.setOnDismissListener { if (activeDialog === dialog) activeDialog = null }
+        activeDialog = dialog
+        dialog.show()
+    }
+
+    private fun showSearchDialog() {
+        if (activeDialog?.isShowing == true) return
+        val input = EditText(this).apply {
+            hint = "cats or @username"
+            isSingleLine = true
+            setPadding(32, 12, 32, 12)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Search TikTok")
+            .setMessage("Enter a topic/hashtag, or type @username for a profile.")
+            .setView(input)
+            .setPositiveButton("Go") { _, _ ->
+                val target = TikTokNavigation.destinationForSearch(input.text?.toString().orEmpty())
+                if (target == null) {
+                    Toast.makeText(this, "Enter a topic or @username", Toast.LENGTH_SHORT).show()
+                } else {
+                    webView.loadUrl(target)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+        dialog.setOnShowListener {
+            input.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+            input.postDelayed({
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            }, 120L)
+        }
+        dialog.setOnDismissListener { if (activeDialog === dialog) activeDialog = null }
+        activeDialog = dialog
+        dialog.show()
+    }
+
+    private fun showBlockedLinkMessage() {
         Toast.makeText(
             this,
-            "Arrows: pointer  •  OK: click  •  CH ↓/↑: next/previous  •  Back: AppGate",
+            "TikTok tried to open its phone app. AppGate kept you on TV. Use Menu → Search if needed.",
             Toast.LENGTH_LONG
         ).show()
     }
 
-    private fun checkPageHealth() {
-        val script = """
-            (function(){
-              if (!document.body) return false;
-              var text = (document.body.innerText || '').trim();
-              return text.length > 20 || !!document.querySelector('video,img,canvas,iframe');
-            })();
-        """.trimIndent()
-        webView.evaluateJavascript(script) { result ->
-            pageLooksBlank = result == "false"
-            if (pageLooksBlank) {
-                Toast.makeText(
-                    this,
-                    "The website returned a blank page. Press Menu to reload or Back to exit.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
-
     private fun moveFeed(next: Boolean) {
-        if (!site.feedMode) {
-            webView.scrollBy(0, if (next) root.height * 3 / 4 else -root.height * 3 / 4)
-            return
-        }
         if (feedMoveInProgress) return
         feedMoveInProgress = true
 
         webView.evaluateJavascript(FEED_FINGERPRINT) { before ->
-            if (site.id == "tiktok" && !site.mobileUa) {
-                dispatchWebArrow(next)
-            } else {
-                runJs(if (next) JS_FEED_NEXT else JS_FEED_PREVIOUS)
-            }
-
+            dispatchWebArrow(next)
             webView.postDelayed({
-                webView.evaluateJavascript(FEED_FINGERPRINT) { after ->
-                    if (before == after) {
-                        runJs(if (next) JS_FEED_NEXT else JS_FEED_PREVIOUS)
-                        webView.postDelayed({
-                            webView.evaluateJavascript(FEED_FINGERPRINT) { finalValue ->
-                                if (before == finalValue && site.mobileUa) {
-                                    swipeFeed(next)
-                                }
-                            }
-                        }, 420)
+                webView.evaluateJavascript(FEED_FINGERPRINT) { afterArrow ->
+                    if (before != afterArrow) {
+                        feedMoveInProgress = false
+                        return@evaluateJavascript
                     }
-                    webView.postDelayed({ feedMoveInProgress = false }, 450)
+
+                    runJs(if (next) JS_FEED_NEXT else JS_FEED_PREVIOUS)
+                    webView.postDelayed({
+                        webView.evaluateJavascript(FEED_FINGERPRINT) { afterJs ->
+                            if (before == afterJs) swipeFeed(next)
+                            webView.postDelayed({ feedMoveInProgress = false }, 380L)
+                        }
+                    }, 420L)
                 }
-            }, 480)
+            }, 460L)
         }
     }
 
-    /** Sends a real key event to the web renderer so TikTok's web shortcut sees it. */
+    /** Sends a real key event to the web renderer before using fallbacks. */
     private fun dispatchWebArrow(next: Boolean) {
         val keyCode = if (next) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
         val downTime = SystemClock.uptimeMillis()
@@ -431,11 +433,10 @@ class BrowserActivity : AppCompatActivity() {
         webView.dispatchKeyEvent(KeyEvent(downTime, downTime + 20, KeyEvent.ACTION_UP, keyCode, 0))
     }
 
-    /** Last-resort touch flick for mobile layouts that ignore scroll and key events. */
+    /** Last-resort in-process touch flick for a feed that ignores keys/scroll. */
     private fun swipeFeed(next: Boolean) {
-        val width = root.width.toFloat()
+        val x = root.width / 2f
         val height = root.height.toFloat()
-        val x = width / 2f
         val startY = if (next) height * 0.78f else height * 0.22f
         val endY = if (next) height * 0.22f else height * 0.78f
         val downTime = SystemClock.uptimeMillis()
@@ -461,6 +462,7 @@ class BrowserActivity : AppCompatActivity() {
         when {
             customView != null -> customViewCallback?.onCustomViewHidden()
             keyboardRequested || isKeyboardVisible() -> hideKeyboard()
+            webView.canGoBack() -> webView.goBack()
             else -> finish()
         }
     }
@@ -489,34 +491,6 @@ class BrowserActivity : AppCompatActivity() {
 
     private fun clickAt(x: Float, y: Float) {
         if (root.width <= 0 || root.height <= 0) return
-        val normalizedX = (x / root.width).coerceIn(0f, 1f)
-        val normalizedY = (y / root.height).coerceIn(0f, 1f)
-        val targetScript = targetKindScript(normalizedX, normalizedY)
-
-        webView.evaluateJavascript(targetScript) { result ->
-            val targetKind = when {
-                result?.contains("comment") == true -> TargetKind.COMMENT
-                result?.contains("editor") == true -> TargetKind.EDITOR
-                else -> TargetKind.OTHER
-            }
-            dispatchClickMotion(x, y)
-            cursor.pulse()
-
-            when (targetKind) {
-                TargetKind.EDITOR -> focusEditor(preferComment = false, delayMs = 100)
-                TargetKind.COMMENT -> {
-                    focusEditor(preferComment = true, delayMs = 320)
-                    focusEditor(preferComment = true, delayMs = 900)
-                }
-                TargetKind.OTHER -> {
-                    // Some sites put a transparent wrapper above the actual input.
-                    focusActiveEditor(delayMs = 140)
-                }
-            }
-        }
-    }
-
-    private fun dispatchClickMotion(x: Float, y: Float) {
         val downTime = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
         val up = MotionEvent.obtain(downTime, downTime + 65, MotionEvent.ACTION_UP, x, y, 0)
@@ -526,23 +500,15 @@ class BrowserActivity : AppCompatActivity() {
         webView.dispatchTouchEvent(up)
         down.recycle()
         up.recycle()
-    }
+        cursor.pulse()
 
-    private fun focusEditor(preferComment: Boolean, delayMs: Long) {
+        // Login/search text fields should still get the Fire TV keyboard if the
+        // page makes one active. Comment posting is deliberately not promised.
         webView.postDelayed({
-            val script = if (preferComment) JS_FOCUS_COMMENT_EDITOR else JS_FOCUS_ACTIVE_EDITOR
-            webView.evaluateJavascript(script) { result ->
+            webView.evaluateJavascript(JS_ACTIVE_EDITOR) { result ->
                 if (result == "true") showKeyboard()
             }
-        }, delayMs)
-    }
-
-    private fun focusActiveEditor(delayMs: Long) {
-        webView.postDelayed({
-            webView.evaluateJavascript(JS_FOCUS_ACTIVE_EDITOR) { result ->
-                if (result == "true") showKeyboard()
-            }
-        }, delayMs)
+        }, 180L)
     }
 
     private fun showKeyboard() {
@@ -553,38 +519,16 @@ class BrowserActivity : AppCompatActivity() {
             inputMethod.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
             webView.postDelayed({
                 inputMethod.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
-            }, 180)
+            }, 180L)
         }
     }
-
-    private fun targetKindScript(normalizedX: Float, normalizedY: Float): String = """
-        (function(){
-          var x = window.innerWidth * $normalizedX;
-          var y = window.innerHeight * $normalizedY;
-          var element = document.elementFromPoint(x, y);
-          function editable(node){
-            if (!node || node.nodeType !== 1) return false;
-            var tag = (node.tagName || '').toLowerCase();
-            return tag === 'textarea' ||
-              (tag === 'input' && !/button|submit|checkbox|radio|file/.test(node.type || '')) ||
-              node.isContentEditable || node.getAttribute('role') === 'textbox';
-          }
-          for (var i = 0; element && i < 8; i++, element = element.parentElement) {
-            if (editable(element)) return 'editor';
-            var signature = [element.getAttribute('aria-label'), element.getAttribute('title'),
-              element.getAttribute('data-e2e'), element.id, element.className].join(' ').toLowerCase();
-            if (signature.indexOf('comment') >= 0 || signature.indexOf('reply') >= 0) return 'comment';
-          }
-          return 'other';
-        })();
-    """.trimIndent()
 
     private fun runJs(code: String) {
         if (::webView.isInitialized) webView.evaluateJavascript(code, null)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString(STATE_URL, webView.url ?: site.url)
+        if (::webView.isInitialized) outState.putString(STATE_URL, webView.url ?: lastGoodUrl)
         outState.putFloat(STATE_CURSOR_X, cursorX)
         outState.putFloat(STATE_CURSOR_Y, cursorY)
         super.onSaveInstanceState(outState)
@@ -612,6 +556,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        activeDialog?.dismiss()
         if (::webView.isInitialized) {
             runJs(JS_PAUSE_ALL_VIDEOS)
             webView.stopLoading()
@@ -623,14 +568,12 @@ class BrowserActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private enum class TargetKind { EDITOR, COMMENT, OTHER }
-
     companion object {
         private const val STATE_URL = "browser_url"
         private const val STATE_CURSOR_X = "cursor_x"
         private const val STATE_CURSOR_Y = "cursor_y"
 
-        private val handledKeys = setOf(
+        private val HANDLED_KEYS = setOf(
             KeyEvent.KEYCODE_DPAD_UP,
             KeyEvent.KEYCODE_DPAD_DOWN,
             KeyEvent.KEYCODE_DPAD_LEFT,
@@ -646,7 +589,9 @@ class BrowserActivity : AppCompatActivity() {
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE,
             KeyEvent.KEYCODE_MEDIA_REWIND,
-            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+            KeyEvent.KEYCODE_MEDIA_NEXT,
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS
         )
 
         private const val FEED_FINGERPRINT = """
@@ -733,67 +678,14 @@ class BrowserActivity : AppCompatActivity() {
             })();
         """
 
-        private fun jsSeek(seconds: Int) = """
-            (function(){
-              var videos = Array.prototype.slice.call(document.querySelectorAll('video'));
-              if (!videos.length) return false;
-              var middle = window.innerHeight / 2, best = videos[0], distance = 1e9;
-              videos.forEach(function(video){
-                var rect = video.getBoundingClientRect();
-                var current = Math.abs((rect.top + rect.bottom) / 2 - middle);
-                if (current < distance) { distance = current; best = video; }
-              });
-              best.currentTime = Math.max(0, Math.min(best.duration || 1e9, best.currentTime + ($seconds)));
-              return true;
-            })();
-        """
-
-        private const val JS_FOCUS_ACTIVE_EDITOR = """
+        private const val JS_ACTIVE_EDITOR = """
             (function(){
               var element = document.activeElement;
               if (!element) return false;
               var tag = (element.tagName || '').toLowerCase();
-              var editable = tag === 'textarea' ||
+              return tag === 'textarea' ||
                 (tag === 'input' && !/button|submit|checkbox|radio|file/.test(element.type || '')) ||
                 element.isContentEditable || element.getAttribute('role') === 'textbox';
-              if (!editable) return false;
-              element.focus();
-              if (element.click) element.click();
-              return true;
-            })();
-        """
-
-        private const val JS_FOCUS_COMMENT_EDITOR = """
-            (function(){
-              function visible(element){
-                if (!element) return false;
-                var rect = element.getBoundingClientRect();
-                var style = getComputedStyle(element);
-                return rect.width > 2 && rect.height > 2 &&
-                  style.display !== 'none' && style.visibility !== 'hidden';
-              }
-              var selectors = [
-                '[data-e2e="comment-input"] [contenteditable="true"]',
-                '[data-e2e="comment-input"] textarea',
-                '[data-e2e*="comment"] [contenteditable="true"]',
-                '[data-e2e*="comment"] textarea',
-                '[aria-label*="comment" i][contenteditable="true"]',
-                'textarea[placeholder*="comment" i]',
-                'textarea[placeholder*="reply" i]',
-                '[role="dialog"] textarea',
-                '[role="dialog"] [contenteditable="true"][role="textbox"]'
-              ];
-              for (var i = 0; i < selectors.length; i++) {
-                var candidates = document.querySelectorAll(selectors[i]);
-                for (var j = 0; j < candidates.length; j++) {
-                  if (visible(candidates[j])) {
-                    candidates[j].focus();
-                    if (candidates[j].click) candidates[j].click();
-                    return true;
-                  }
-                }
-              }
-              return false;
             })();
         """
 
@@ -813,7 +705,7 @@ class BrowserActivity : AppCompatActivity() {
         """
     }
 
-    /** A high-contrast pointer drawn above the website. */
+    /** High-contrast pointer drawn above the website. */
     private class CursorView(context: Context) : View(context) {
         private var x = 0f
         private var y = 0f
@@ -840,7 +732,7 @@ class BrowserActivity : AppCompatActivity() {
             postDelayed({
                 radius = 14f
                 invalidate()
-            }, 130)
+            }, 130L)
         }
 
         override fun onDraw(canvas: Canvas) {

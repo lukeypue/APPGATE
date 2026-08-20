@@ -2,6 +2,7 @@ name: Build AppGate APK
 
 on:
   push:
+  pull_request:
   workflow_dispatch:        # adds a manual "Run workflow" button in the Actions tab
 
 jobs:
@@ -38,6 +39,10 @@ jobs:
             echo "dir=$(dirname "$FOUND")" >> "$GITHUB_OUTPUT"
           fi
           echo "Building in: $(cat "$GITHUB_OUTPUT")"
+
+      - name: Run unit tests
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: gradle testDebugUnitTest --stacktrace
 
       - name: Build debug APK
         working-directory: ${{ steps.proj.outputs.dir }}

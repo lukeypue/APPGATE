@@ -2,6 +2,7 @@ package com.appgate.tv
 
 import java.net.URI
 import java.text.Normalizer
+import java.util.Locale
 
 /**
  * Small, testable policy for the TikTok-only AppGate build.
@@ -24,6 +25,7 @@ object TikTokNavigation {
         } else {
             val tag = cleaned
                 .removePrefix("#")
+                .lowercase(Locale.ROOT)
                 .filter { it.isLetterOrDigit() || it == '_' }
             tag.takeIf { it.isNotBlank() }?.let { "https://www.tiktok.com/tag/$it" }
         }

@@ -10,7 +10,12 @@
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"
         android:theme="@style/Theme.AppGate"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="false">
+
+        <uses-library
+            android:name="com.amazon.webview"
+            android:required="false" />
 
         <activity
             android:name=".MainActivity"
@@ -27,6 +32,7 @@
             android:name=".BrowserActivity"
             android:exported="false"
             android:screenOrientation="landscape"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
             android:launchMode="singleTop" />
     </application>

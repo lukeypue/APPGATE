@@ -253,8 +253,8 @@ class MainActivity : ComponentActivity() {
                         Prefs.setStartupSiteId(this@MainActivity, null)
                     }) { Text("Clear startup app (open to home screen)") }
                     Text(
-                        "Tip: inside a site, press Menu to toggle the cursor. " +
-                        "Play/Pause, Rewind and Fast-Forward control videos.",
+                        "Inside a site: Arrows move the pointer, OK clicks, " +
+                        "Channel Down/Up changes videos, and Back returns here.",
                         fontSize = 13.sp
                     )
                 }

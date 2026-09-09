@@ -24,7 +24,7 @@ jobs:
           unzip -t ai-browser-v2-source-fixed.zip
           mkdir ai-browser-v2-build
           unzip -q ai-browser-v2-source-fixed.zip -d ai-browser-v2-build
-      - name: Apply Android JSON compatibility fix
+      - name: Apply Android JSON compatibility fixes
         run: |
           cat > ai-browser-v2-build/app/src/main/java/com/aibrowser/knowledgehub/SiteAdapter.java <<'JAVA'
           package com.aibrowser.knowledgehub;
@@ -84,6 +84,63 @@ jobs:
                   a.queryLocator=locatorFrom(o.optJSONObject("queryLocator"));a.submitLocator=locatorFrom(o.optJSONObject("submitLocator"));return a;
               }
               public boolean isRunnable(){return searchUrlTemplate!=null||queryLocator!=null;}
+          }
+          JAVA
+
+          cat > ai-browser-v2-build/app/src/main/java/com/aibrowser/knowledgehub/AdapterRepository.java <<'JAVA'
+          package com.aibrowser.knowledgehub;
+
+          import android.content.ContentValues;
+          import android.database.Cursor;
+          import android.database.sqlite.SQLiteDatabase;
+
+          import org.json.JSONArray;
+          import org.json.JSONException;
+          import org.json.JSONObject;
+
+          import java.util.ArrayList;
+          import java.util.List;
+
+          public class AdapterRepository {
+              private final KnowledgeDb db;
+              public AdapterRepository(KnowledgeDb db){this.db=db;}
+
+              public static boolean shouldReplace(SiteAdapter existing,SiteAdapter incoming){
+                  if(existing==null)return true;
+                  if("user-taught".equals(existing.source)&&existing.lastSuccess>0&&incoming.version<=existing.version)return false;
+                  if(existing.lastSuccess>0&&incoming.version<existing.version)return false;
+                  return incoming.version>existing.version || existing.lastSuccess==0 || "NEEDS ATTENTION".equals(existing.status);
+              }
+
+              public void mergeBundled(List<SiteAdapter> bundled){for(SiteAdapter b:bundled){SiteAdapter e=getForDomain(b.domain);if(shouldReplace(e,b))save(b);}}
+              public void save(SiteAdapter a){
+                  ContentValues v=new ContentValues();v.put("domain",a.domain);v.put("name",a.name);v.put("json",a.toJson().toString());v.put("source",a.source);v.put("status",a.status);v.put("confidence",a.confidence);v.put("version",a.version);v.put("last_success",a.lastSuccess);v.put("last_repair",a.lastRepair);v.put("failure_reason",a.failureReason);
+                  db.getWritableDatabase().insertWithOnConflict("adapters",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+              }
+              public SiteAdapter getForDomain(String domain){
+                  try(Cursor c=db.getReadableDatabase().rawQuery("SELECT json FROM adapters WHERE domain=?",new String[]{domain})){if(c.moveToFirst())return SiteAdapter.fromJson(c.getString(0));}return null;
+              }
+              public List<SiteAdapter> list(){ArrayList<SiteAdapter> out=new ArrayList<>();try(Cursor c=db.getReadableDatabase().rawQuery("SELECT json FROM adapters ORDER BY name",null)){while(c.moveToNext())out.add(SiteAdapter.fromJson(c.getString(0)));}return out;}
+              public void markResult(SiteAdapter a,String status,String reason,boolean success){a.status=status;a.failureReason=reason==null?"":reason;if(success){a.lastSuccess=System.currentTimeMillis();a.confidence=Math.min(1.0,a.confidence+.02);}save(a);}
+              public String exportJson(){
+                  try {
+                      JSONArray arr=new JSONArray();for(SiteAdapter a:list())arr.put(a.toJson());
+                      JSONObject root=new JSONObject();root.put("format","ai-browser-adapters");root.put("version",2);root.put("exportedAt",System.currentTimeMillis());root.put("adapters",arr);
+                      return root.toString(2);
+                  } catch (JSONException e) {
+                      throw new IllegalStateException("Could not export adapters",e);
+                  }
+              }
+              public int importJson(String json){
+                  try {
+                      JSONObject root=new JSONObject(json);if(!"ai-browser-adapters".equals(root.optString("format")))throw new IllegalArgumentException("Not an AI Browser adapter backup");
+                      JSONArray arr=root.optJSONArray("adapters");if(arr==null)return 0;int n=0;
+                      for(int i=0;i<arr.length();i++){SiteAdapter incoming=SiteAdapter.fromJson(arr.getJSONObject(i));SiteAdapter existing=getForDomain(incoming.domain);if(shouldReplace(existing,incoming)){save(incoming);n++;}}
+                      return n;
+                  } catch (JSONException e) {
+                      throw new IllegalArgumentException("Invalid AI Browser adapter backup",e);
+                  }
+              }
           }
           JAVA
       - name: Run v2 unit tests

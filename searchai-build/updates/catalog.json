@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "sites": [
+    {"site_id":"general_web","name":"General Web","domain":"bing.com","search_url":"https://www.bing.com/search?q={query}","enabled":true,"category":"web"},
+    {"site_id":"ksl","name":"KSL","domain":"ksl.com","search_url":"https://www.ksl.com/search?search={query}","enabled":true,"category":"classifieds"}
+  ]
+}

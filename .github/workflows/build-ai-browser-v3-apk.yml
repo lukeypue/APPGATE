@@ -17,10 +17,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Prepare AI Browser v3 source
+      - name: Prepare and verify AI Browser v3 source
         run: |
-          rm -rf ai-browser-v3-build ai-browser-v3-source.zip
-          base64 --decode ai-browser-v3-source.b64 > ai-browser-v3-source.zip
+          rm -rf ai-browser-v3-build ai-browser-v3-source.zip ai-browser-v3-source-clean.b64
+          cat ai-browser-v3-source.b64.00 ai-browser-v3-source.b64.01 ai-browser-v3-source.b64.02 ai-browser-v3-source.b64.03 ai-browser-v3-source.b64.04 ai-browser-v3-source.b64.05 ai-browser-v3-source.b64.06 ai-browser-v3-source.b64.07 ai-browser-v3-source.b64.08 ai-browser-v3-source.b64.09 ai-browser-v3-source.b64.10 | tr -d '[:space:]' > ai-browser-v3-source-clean.b64
+          echo "519d27329e94b66842ae4844159574b12ecd817b88445b0a9f62c183d6abc36b  ai-browser-v3-source-clean.b64" | sha256sum -c -
+          base64 --decode ai-browser-v3-source-clean.b64 > ai-browser-v3-source.zip
+          echo "b55a21c3467d3ceff26876073f8e340c4d34d3ad79f3a1eaaa60fc005d3d4a5d  ai-browser-v3-source.zip" | sha256sum -c -
           unzip -t ai-browser-v3-source.zip
           mkdir ai-browser-v3-build
           unzip -q ai-browser-v3-source.zip -d ai-browser-v3-build

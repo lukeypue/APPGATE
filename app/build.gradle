@@ -15,6 +15,10 @@ android {
         versionName "2.1.0-ai-browser-testlog"
     }
 
+    buildFeatures {
+        buildConfig true
+    }
+
     buildTypes {
         release { minifyEnabled false }
     }

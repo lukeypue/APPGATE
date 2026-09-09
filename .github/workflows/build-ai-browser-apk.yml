@@ -24,6 +24,68 @@ jobs:
           unzip -t ai-browser-v2-source-fixed.zip
           mkdir ai-browser-v2-build
           unzip -q ai-browser-v2-source-fixed.zip -d ai-browser-v2-build
+      - name: Apply Android JSON compatibility fix
+        run: |
+          cat > ai-browser-v2-build/app/src/main/java/com/aibrowser/knowledgehub/SiteAdapter.java <<'JAVA'
+          package com.aibrowser.knowledgehub;
+
+          import org.json.JSONException;
+          import org.json.JSONObject;
+
+          public class SiteAdapter {
+              public String name, domain, startUrl, searchUrlTemplate, source, status, failureReason, resultSelector;
+              public int version;
+              public double confidence;
+              public long lastSuccess, lastRepair;
+              public boolean loginCommon;
+              public SemanticLocator queryLocator, submitLocator;
+
+              public SiteAdapter(String name,String domain,String startUrl){
+                  this.name=name;this.domain=domain;this.startUrl=startUrl;
+                  this.source="user";this.status="NEEDS ATTENTION";this.version=1;this.confidence=.50;
+                  this.failureReason="Teach this site how to search";this.resultSelector="article,[role=listitem]";
+              }
+
+              public JSONObject toJson(){
+                  try {
+                      JSONObject o=new JSONObject();
+                      o.put("name",name);o.put("domain",domain);o.put("startUrl",startUrl);
+                      o.put("searchUrlTemplate",searchUrlTemplate==null?JSONObject.NULL:searchUrlTemplate);
+                      o.put("source",source);o.put("status",status);o.put("failureReason",failureReason==null?"":failureReason);
+                      o.put("resultSelector",resultSelector==null?"":resultSelector);o.put("version",version);o.put("confidence",confidence);
+                      o.put("lastSuccess",lastSuccess);o.put("lastRepair",lastRepair);o.put("loginCommon",loginCommon);
+                      if(queryLocator!=null)o.put("queryLocator",locatorJson(queryLocator));
+                      if(submitLocator!=null)o.put("submitLocator",locatorJson(submitLocator));
+                      return o;
+                  } catch (JSONException e) {
+                      throw new IllegalStateException("Could not serialize site adapter", e);
+                  }
+              }
+
+              private static JSONObject locatorJson(SemanticLocator l) throws JSONException {
+                  JSONObject o=new JSONObject();o.put("tag",l.tag);o.put("role",l.role);o.put("ariaLabel",l.ariaLabel);
+                  o.put("placeholder",l.placeholder);o.put("name",l.name);o.put("id",l.id);o.put("text",l.text);o.put("css",l.cssFallback);return o;
+              }
+              private static SemanticLocator locatorFrom(JSONObject o){
+                  if(o==null)return null;return new SemanticLocator(o.optString("tag"),o.optString("role"),o.optString("ariaLabel"),
+                          o.optString("placeholder"),o.optString("name"),o.optString("id"),o.optString("text"),o.optString("css"));
+              }
+              public static SiteAdapter fromJson(String json){
+                  try { return fromJson(new JSONObject(json)); }
+                  catch (JSONException e) { throw new IllegalArgumentException("Invalid adapter JSON", e); }
+              }
+              public static SiteAdapter fromJson(JSONObject o){
+                  SiteAdapter a=new SiteAdapter(o.optString("name"),o.optString("domain"),o.optString("startUrl"));
+                  a.searchUrlTemplate=o.isNull("searchUrlTemplate")?null:o.optString("searchUrlTemplate",null);
+                  a.source=o.optString("source","user");a.status=o.optString("status","NEEDS ATTENTION");
+                  a.failureReason=o.optString("failureReason","");a.resultSelector=o.optString("resultSelector","article,[role=listitem]");
+                  a.version=o.optInt("version",1);a.confidence=o.optDouble("confidence",.5);a.lastSuccess=o.optLong("lastSuccess",0);
+                  a.lastRepair=o.optLong("lastRepair",0);a.loginCommon=o.optBoolean("loginCommon",false);
+                  a.queryLocator=locatorFrom(o.optJSONObject("queryLocator"));a.submitLocator=locatorFrom(o.optJSONObject("submitLocator"));return a;
+              }
+              public boolean isRunnable(){return searchUrlTemplate!=null||queryLocator!=null;}
+          }
+          JAVA
       - name: Run v2 unit tests
         working-directory: ai-browser-v2-build
         run: gradle testDebugUnitTest --stacktrace

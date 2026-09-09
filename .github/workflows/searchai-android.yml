@@ -1,0 +1,30 @@
+name: Build SearchAI Android APK
+on:
+  push:
+    branches: [ searchai-android ]
+    paths: [ 'searchai-android/**', '.github/workflows/searchai-android.yml' ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Test
+        working-directory: searchai-android
+        run: gradle testDebugUnitTest --stacktrace
+      - name: Build APK
+        working-directory: searchai-android
+        run: gradle assembleDebug --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SearchAI-Android-APK
+          path: searchai-android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

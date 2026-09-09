@@ -17,7 +17,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -36,16 +35,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private lateinit var store: KnowledgeStore
+    private lateinit var eventLog: AppEventLog
     private val handler = Handler(Looper.getMainLooper())
     private var lastSkillHostShown: String? = null
+    private var pendingExportJson: String? = null
 
     private val openDocument = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) importTextDocument(uri)
     }
 
+    private val createTestLog = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) writeTestLog(uri)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = KnowledgeStore(this)
+        eventLog = AppEventLog(this)
+        eventLog.add("app_launch", outcome = "success")
         setContentView(buildUi())
         configureWebView()
         showHome()
@@ -91,6 +98,8 @@ class MainActivity : AppCompatActivity() {
         actions.addView(button("Save Page") { saveCurrentPage() })
         actions.addView(button("Teach Site") { teachCurrentSite() })
         actions.addView(button("Upload Data") { openDocument.launch(arrayOf("text/*", "application/json", "text/csv", "text/markdown", "text/html")) })
+        actions.addView(button("Export Test Log") { exportTestLog() })
+        actions.addView(button("Check Update") { checkForUpdate() })
         actions.addView(button("Update Knowledge") { updateKnowledge() })
         actions.addView(button("Knowledge") { showKnowledgeSummary() })
         root.addView(HorizontalScrollView(this).apply {
@@ -136,7 +145,7 @@ class MainActivity : AppCompatActivity() {
             setSupportZoom(true)
             builtInZoomControls = true
             displayZoomControls = false
-            userAgentString = userAgentString + " AIBrowser/1.0"
+            userAgentString = userAgentString + " AIBrowser/2.1"
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
@@ -158,6 +167,10 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView, url: String) {
                 address.setText(url)
                 status.text = view.title ?: url
+                val host = KnowledgeSearch.normalizeHost(url)
+                if (host.isNotBlank() && host != "local.ai-browser") {
+                    eventLog.add("navigation", host, AppEventLog.sanitizeUrl(url), "loaded")
+                }
                 maybeShowSiteSkill(url)
             }
         }
@@ -167,11 +180,14 @@ class MainActivity : AppCompatActivity() {
         val input = address.text.toString().trim()
         if (input.isBlank()) return
         if (looksLikeUrl(input)) {
-            webView.loadUrl(normalizeUrl(input))
+            val url = normalizeUrl(input)
+            eventLog.add("navigation_request", KnowledgeSearch.normalizeHost(url), AppEventLog.sanitizeUrl(url), "requested")
+            webView.loadUrl(url)
             return
         }
 
         val local = KnowledgeSearch.search(input, store.getEntries(), store.getSkills(), 12)
+        eventLog.add("search", detail = input.take(500), outcome = if (local.isEmpty()) "web" else "local_results:${local.size}")
         if (local.isEmpty()) {
             searchWeb(input)
         } else {
@@ -217,6 +233,7 @@ class MainActivity : AppCompatActivity() {
                 val text = input.text.toString().trim()
                 if (text.isNotBlank()) {
                     store.upsertSkill(SiteSkill(host, text, System.currentTimeMillis()))
+                    eventLog.add("teach_site", host, "instructions_updated", "success")
                     toast("Site instructions saved")
                 }
             }
@@ -240,11 +257,13 @@ class MainActivity : AppCompatActivity() {
     private fun saveCurrentPage() {
         val source = webView.url ?: return toast("Open a website first")
         if (!source.startsWith("http")) return toast("Only web pages can be saved")
+        val host = KnowledgeSearch.normalizeHost(source)
         status.text = "Reading this page…"
         webView.evaluateJavascript("(document.body && document.body.innerText) ? document.body.innerText : ''") { raw ->
             val text = decodeJsString(raw).take(120_000)
             if (text.isBlank()) {
                 status.text = "Could not read this page"
+                eventLog.add("save_page", host, AppEventLog.sanitizeUrl(source), "failed_no_text")
                 toast("This site did not expose readable page text")
                 return@evaluateJavascript
             }
@@ -257,6 +276,7 @@ class MainActivity : AppCompatActivity() {
                 kind = "web"
             )
             store.upsertEntry(entry)
+            eventLog.add("save_page", host, AppEventLog.sanitizeUrl(source), "success")
             status.text = "Saved page to knowledge"
             toast("Page learned")
         }
@@ -274,7 +294,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 out.toString()
             }.orEmpty()
-            if (text.isBlank()) return toast("That file did not contain readable text")
+            if (text.isBlank()) {
+                eventLog.add("upload_data", outcome = "failed_empty")
+                return toast("That file did not contain readable text")
+            }
             val name = uri.lastPathSegment?.substringAfterLast('/') ?: "Uploaded data"
             store.upsertEntry(
                 KnowledgeEntry(
@@ -286,10 +309,84 @@ class MainActivity : AppCompatActivity() {
                     kind = "upload"
                 )
             )
+            eventLog.add("upload_data", outcome = "success")
             toast("Imported into browser knowledge")
             showHome()
         } catch (e: Exception) {
+            eventLog.add("upload_data", outcome = "failed")
             toast("Could not import file: ${e.message ?: "unknown error"}")
+        }
+    }
+
+    private fun exportTestLog() {
+        val notes = EditText(this).apply {
+            hint = "What did you try? What failed? What should the next version do better?"
+            minLines = 6
+            gravity = Gravity.TOP
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Export Test Log")
+            .setMessage("This report includes searches and app/site outcomes. It does not include passwords, cookies, form contents, page bodies, or URL query/fragment data.")
+            .setView(notes)
+            .setPositiveButton("Create Document") { _, _ ->
+                pendingExportJson = AppEventLog.buildReport(
+                    eventLog.events(),
+                    notes.text.toString().trim(),
+                    BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE
+                )
+                eventLog.add("export_test_log", outcome = "requested")
+                createTestLog.launch("AI-Browser-Test-Log-${System.currentTimeMillis()}.json")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun writeTestLog(uri: Uri) {
+        val json = pendingExportJson ?: return
+        try {
+            contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(json) }
+            eventLog.add("export_test_log", outcome = "saved")
+            toast("Test log saved. Upload that JSON document to me with your next test report.")
+        } catch (e: Exception) {
+            eventLog.add("export_test_log", outcome = "failed")
+            toast("Could not save test log: ${e.message ?: "unknown error"}")
+        } finally {
+            pendingExportJson = null
+        }
+    }
+
+    private fun checkForUpdate() {
+        status.text = "Checking for update…"
+        eventLog.add("check_update", outcome = "started")
+        UpdateChecker.check(UPDATE_MANIFEST_URL) { result ->
+            result.onSuccess { info ->
+                if (info.versionCode > BuildConfig.VERSION_CODE) {
+                    status.text = "Update ${info.versionName} available"
+                    eventLog.add("check_update", detail = info.versionName, outcome = "available")
+                    AlertDialog.Builder(this)
+                        .setTitle("Update available: ${info.versionName}")
+                        .setMessage(info.notes.ifBlank { "A newer AI Browser build is available." })
+                        .setPositiveButton("Open Download") { _, _ ->
+                            openExternal(Uri.parse(info.downloadUrl))
+                        }
+                        .setNegativeButton("Later", null)
+                        .show()
+                } else {
+                    status.text = "AI Browser is up to date"
+                    eventLog.add("check_update", detail = BuildConfig.VERSION_NAME, outcome = "current")
+                    AlertDialog.Builder(this)
+                        .setTitle("You're up to date")
+                        .setMessage("Installed: ${BuildConfig.VERSION_NAME}\nLatest: ${info.versionName}")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }.onFailure { error ->
+                status.text = "Update check failed"
+                eventLog.add("check_update", outcome = "failed")
+                toast("Could not check for updates: ${error.message ?: "network error"}")
+            }
         }
     }
 
@@ -297,6 +394,7 @@ class MainActivity : AppCompatActivity() {
         val sources = store.getEntries().filter { it.kind == "web" && it.source.startsWith("http") }
         if (sources.isEmpty()) return toast("Save some web pages first")
         status.text = "Updating 0/${sources.size} sources…"
+        eventLog.add("update_knowledge", detail = "sources:${sources.size}", outcome = "started")
         val runner = WebView(this)
         runner.settings.javaScriptEnabled = true
         runner.settings.domStorageEnabled = true
@@ -309,6 +407,7 @@ class MainActivity : AppCompatActivity() {
         if (index >= items.size) {
             runner.destroy()
             status.text = "Knowledge update finished: $ok updated, $failed failed"
+            eventLog.add("update_knowledge", detail = "updated:$ok,failed:$failed", outcome = "finished")
             toast("Knowledge updated: $ok refreshed")
             return
         }
@@ -348,7 +447,8 @@ class MainActivity : AppCompatActivity() {
         val skills = store.getSkills()
         val message = buildString {
             append("Saved knowledge: ${entries.size} items\n")
-            append("Learned sites: ${skills.size}\n\n")
+            append("Learned sites: ${skills.size}\n")
+            append("Test-log events: ${eventLog.events().size}\n\n")
             if (skills.isNotEmpty()) {
                 append("Sites:\n")
                 skills.take(15).forEach { append("• ${it.host}\n") }
@@ -366,7 +466,7 @@ class MainActivity : AppCompatActivity() {
             <style>body{font-family:sans-serif;background:#121418;color:#eee;padding:28px}h1{font-size:30px}p{line-height:1.5}.card{background:#22262d;border-radius:14px;padding:18px;margin:14px 0}b{color:#9ed0ff}</style></head>
             <body><h1>AI Browser</h1><p>Browse normally, then teach the browser what matters so you do not have to rediscover it every time.</p>
             <div class='card'><b>$entries</b> saved knowledge items<br/><b>$skills</b> learned websites</div>
-            <div class='card'><b>Save Page</b> remembers the readable text on the current page.<br/><b>Teach Site</b> saves how you navigate a site.<br/><b>Upload Data</b> adds text files to knowledge.<br/><b>Update Knowledge</b> refreshes pages you previously saved.</div>
+            <div class='card'><b>Save Page</b> remembers readable page text.<br/><b>Teach Site</b> saves how you navigate a site.<br/><b>Upload Data</b> adds text files to knowledge.<br/><b>Export Test Log</b> creates the document you can send us after testing.<br/><b>Check Update</b> checks for the newest build.<br/><b>Update Knowledge</b> refreshes pages you previously saved.</div>
             <p>Captchas and login verification stay manual. Complete them yourself and continue browsing afterward.</p></body></html>
         """.trimIndent()
         webView.loadDataWithBaseURL("https://local.ai-browser/", html, "text/html", "UTF-8", null)
@@ -406,5 +506,9 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacksAndMessages(null)
         if (::webView.isInitialized) webView.destroy()
         super.onDestroy()
+    }
+
+    companion object {
+        private const val UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/lukeypue/APPGATE/ai-browser-rebuild/update/latest.json"
     }
 }

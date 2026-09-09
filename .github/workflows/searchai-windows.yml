@@ -1,0 +1,72 @@
+name: Build SearchAI Windows App
+
+on:
+  push:
+    branches: [searchai-build]
+    paths:
+      - 'searchai-build/**'
+      - '.github/workflows/searchai-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    defaults:
+      run:
+        working-directory: searchai-build
+
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: searchai-build/requirements.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Run GitHub smoke tests
+        run: python -m pytest -q
+
+      - name: Install bundled Chromium
+        shell: pwsh
+        run: |
+          $env:PLAYWRIGHT_BROWSERS_PATH = "$env:GITHUB_WORKSPACE\searchai-build\ms-playwright"
+          python -m playwright install chromium
+
+      - name: Build SearchAI.exe
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --name SearchAI `
+            --add-data "static;static" `
+            --add-data "updates;updates" `
+            --collect-all playwright `
+            --collect-all uvicorn `
+            searchai/launcher.py
+
+      - name: Assemble app folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release\SearchAI | Out-Null
+          Copy-Item dist\SearchAI.exe release\SearchAI\SearchAI.exe
+          Copy-Item ms-playwright release\SearchAI\ms-playwright -Recurse
+          "SearchAI for Windows`n====================`nDouble-click SearchAI.exe to start.`nThe app opens in your browser at a private local address.`nKeep the ms-playwright folder next to SearchAI.exe." | Set-Content -Encoding UTF8 release\SearchAI\START_HERE.txt
+          Compress-Archive -Path release\SearchAI\* -DestinationPath release\SearchAI-Windows.zip -Force
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: SearchAI-Windows
+          path: searchai-build/release/SearchAI-Windows.zip
+          if-no-files-found: error
+          retention-days: 30

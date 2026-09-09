@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -19,9 +19,11 @@ jobs:
           gradle-version: '8.9'
       - name: Prepare AI Browser v2 source
         run: |
-          rm -rf ai-browser-v2-build
+          rm -rf ai-browser-v2-build ai-browser-v2-source-fixed.zip
+          cat ai-browser-v2-source.b64.00 ai-browser-v2-source.b64.01 ai-browser-v2-source.b64.02 ai-browser-v2-source.b64.03 ai-browser-v2-source.b64.04 ai-browser-v2-source.b64.05 ai-browser-v2-source.b64.06 | base64 --decode > ai-browser-v2-source-fixed.zip
+          unzip -t ai-browser-v2-source-fixed.zip
           mkdir ai-browser-v2-build
-          unzip -q ai-browser-v2-source.zip -d ai-browser-v2-build
+          unzip -q ai-browser-v2-source-fixed.zip -d ai-browser-v2-build
       - name: Run v2 unit tests
         working-directory: ai-browser-v2-build
         run: gradle testDebugUnitTest --stacktrace

@@ -17,13 +17,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Run unit tests
-        working-directory: ai-browser-android
+      - name: Prepare AI Browser v2 source
+        run: |
+          rm -rf ai-browser-v2-build
+          mkdir ai-browser-v2-build
+          unzip -q ai-browser-v2-source.zip -d ai-browser-v2-build
+      - name: Run v2 unit tests
+        working-directory: ai-browser-v2-build
         run: gradle testDebugUnitTest --stacktrace
-      - name: Build debug APK
-        working-directory: ai-browser-android
+      - name: Build v2 debug APK
+        working-directory: ai-browser-v2-build
         run: gradle assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: AI-Browser-Android-APK
-          path: ai-browser-android/app/build/outputs/apk/debug/app-debug.apk
+          name: AI-Browser-Android-v2-APK
+          path: ai-browser-v2-build/app/build/outputs/apk/debug/app-debug.apk

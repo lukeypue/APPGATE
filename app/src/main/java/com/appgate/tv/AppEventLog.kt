@@ -1,9 +1,9 @@
 package com.appgate.tv
 
 import android.content.Context
-import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URI
 
 data class BrowserEvent(
     val type: String,
@@ -52,12 +52,18 @@ class AppEventLog(context: Context) {
         private const val KEY_EVENTS = "events"
         private const val MAX_EVENTS = 1500
 
-        fun sanitizeUrl(value: String): String = try {
-            val uri = Uri.parse(value)
-            if (uri.scheme != "http" && uri.scheme != "https") return ""
-            uri.buildUpon().clearQuery().fragment(null).build().toString()
-        } catch (_: Exception) {
-            ""
+        fun sanitizeUrl(value: String): String {
+            return try {
+                val uri = URI(value)
+                val scheme = uri.scheme?.lowercase().orEmpty()
+                if (scheme != "http" && scheme != "https") {
+                    ""
+                } else {
+                    URI(uri.scheme, uri.userInfo, uri.host, uri.port, uri.path, null, null).toString()
+                }
+            } catch (_: Exception) {
+                ""
+            }
         }
 
         fun buildReport(

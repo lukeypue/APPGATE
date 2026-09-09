@@ -72,25 +72,35 @@ class AppEventLog(context: Context) {
             versionName: String,
             versionCode: Int
         ): String {
-            val root = JSONObject()
-            root.put("schemaVersion", 1)
-            root.put("appVersionName", versionName)
-            root.put("appVersionCode", versionCode)
-            root.put("exportedAt", System.currentTimeMillis())
-            root.put("testerNotes", notes.take(10_000))
-            root.put("privacy", "No cookies, passwords, form contents, page bodies, or URL query/fragment data are included.")
-            val array = JSONArray()
-            events.forEach { event ->
-                array.put(JSONObject().apply {
-                    put("type", event.type)
-                    put("timestamp", event.timestamp)
-                    put("host", event.host)
-                    put("detail", event.detail)
-                    put("outcome", event.outcome)
-                })
+            val eventJson = events.joinToString(",\n") { event ->
+                """    {"type":"${escapeJson(event.type)}","timestamp":${event.timestamp},"host":"${escapeJson(event.host)}","detail":"${escapeJson(event.detail)}","outcome":"${escapeJson(event.outcome)}"}"""
             }
-            root.put("events", array)
-            return root.toString(2)
+            return """
+{
+  "schemaVersion": 1,
+  "appVersionName": "${escapeJson(versionName)}",
+  "appVersionCode": $versionCode,
+  "exportedAt": ${System.currentTimeMillis()},
+  "testerNotes": "${escapeJson(notes.take(10_000))}",
+  "privacy": "No cookies, passwords, form contents, page bodies, or URL query/fragment data are included.",
+  "events": [
+$eventJson
+  ]
+}
+            """.trimIndent()
+        }
+
+        private fun escapeJson(value: String): String = buildString(value.length + 16) {
+            value.forEach { ch ->
+                when (ch) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> if (ch.code < 0x20) append("\\u%04x".format(ch.code)) else append(ch)
+                }
+            }
         }
 
         private fun encodeEvents(events: List<BrowserEvent>): String {

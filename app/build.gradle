@@ -11,8 +11,8 @@ android {
         applicationId "com.appgate.tv"
         minSdk 22
         targetSdk 34
-        versionCode 4
-        versionName "2.0.0-ai-browser"
+        versionCode 5
+        versionName "2.1.0-ai-browser-testlog"
     }
 
     buildTypes {

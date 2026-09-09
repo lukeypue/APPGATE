@@ -2,7 +2,6 @@ package com.appgate.tv
 
 import android.os.Handler
 import android.os.Looper
-import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -15,12 +14,11 @@ data class UpdateInfo(
 
 object UpdateChecker {
     fun parseManifest(json: String): UpdateInfo {
-        val root = JSONObject(json)
         return UpdateInfo(
-            versionCode = root.getInt("versionCode"),
-            versionName = root.getString("versionName"),
-            notes = root.optString("notes"),
-            downloadUrl = root.getString("downloadUrl")
+            versionCode = extractInt(json, "versionCode"),
+            versionName = extractString(json, "versionName"),
+            notes = extractString(json, "notes", required = false),
+            downloadUrl = extractString(json, "downloadUrl")
         )
     }
 
@@ -46,5 +44,46 @@ object UpdateChecker {
             }
             Handler(Looper.getMainLooper()).post { callback(result) }
         }.start()
+    }
+
+    private fun extractInt(json: String, key: String): Int {
+        val regex = Regex("\\\"${Regex.escape(key)}\\\"\\s*:\\s*(\\d+)")
+        return regex.find(json)?.groupValues?.get(1)?.toInt()
+            ?: error("Missing integer field: $key")
+    }
+
+    private fun extractString(json: String, key: String, required: Boolean = true): String {
+        val regex = Regex("\\\"${Regex.escape(key)}\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"])*)\\\"")
+        val raw = regex.find(json)?.groupValues?.get(1)
+        if (raw == null) {
+            if (required) error("Missing string field: $key")
+            return ""
+        }
+        return unescapeJsonString(raw)
+    }
+
+    private fun unescapeJsonString(raw: String): String {
+        val out = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            val ch = raw[i]
+            if (ch != '\\' || i + 1 >= raw.length) {
+                out.append(ch)
+                i++
+                continue
+            }
+            val next = raw[i + 1]
+            when (next) {
+                '"' -> out.append('"')
+                '\\' -> out.append('\\')
+                '/' -> out.append('/')
+                'n' -> out.append('\n')
+                'r' -> out.append('\r')
+                't' -> out.append('\t')
+                else -> out.append(next)
+            }
+            i += 2
+        }
+        return out.toString()
     }
 }

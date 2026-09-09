@@ -39,108 +39,70 @@ jobs:
               public long lastSuccess, lastRepair;
               public boolean loginCommon;
               public SemanticLocator queryLocator, submitLocator;
-
-              public SiteAdapter(String name,String domain,String startUrl){
-                  this.name=name;this.domain=domain;this.startUrl=startUrl;
-                  this.source="user";this.status="NEEDS ATTENTION";this.version=1;this.confidence=.50;
-                  this.failureReason="Teach this site how to search";this.resultSelector="article,[role=listitem]";
-              }
-
-              public JSONObject toJson(){
-                  try {
-                      JSONObject o=new JSONObject();
-                      o.put("name",name);o.put("domain",domain);o.put("startUrl",startUrl);
-                      o.put("searchUrlTemplate",searchUrlTemplate==null?JSONObject.NULL:searchUrlTemplate);
-                      o.put("source",source);o.put("status",status);o.put("failureReason",failureReason==null?"":failureReason);
-                      o.put("resultSelector",resultSelector==null?"":resultSelector);o.put("version",version);o.put("confidence",confidence);
-                      o.put("lastSuccess",lastSuccess);o.put("lastRepair",lastRepair);o.put("loginCommon",loginCommon);
-                      if(queryLocator!=null)o.put("queryLocator",locatorJson(queryLocator));
-                      if(submitLocator!=null)o.put("submitLocator",locatorJson(submitLocator));
-                      return o;
-                  } catch (JSONException e) {
-                      throw new IllegalStateException("Could not serialize site adapter", e);
-                  }
-              }
-
-              private static JSONObject locatorJson(SemanticLocator l) throws JSONException {
-                  JSONObject o=new JSONObject();o.put("tag",l.tag);o.put("role",l.role);o.put("ariaLabel",l.ariaLabel);
-                  o.put("placeholder",l.placeholder);o.put("name",l.name);o.put("id",l.id);o.put("text",l.text);o.put("css",l.cssFallback);return o;
-              }
-              private static SemanticLocator locatorFrom(JSONObject o){
-                  if(o==null)return null;return new SemanticLocator(o.optString("tag"),o.optString("role"),o.optString("ariaLabel"),
-                          o.optString("placeholder"),o.optString("name"),o.optString("id"),o.optString("text"),o.optString("css"));
-              }
-              public static SiteAdapter fromJson(String json){
-                  try { return fromJson(new JSONObject(json)); }
-                  catch (JSONException e) { throw new IllegalArgumentException("Invalid adapter JSON", e); }
-              }
-              public static SiteAdapter fromJson(JSONObject o){
-                  SiteAdapter a=new SiteAdapter(o.optString("name"),o.optString("domain"),o.optString("startUrl"));
-                  a.searchUrlTemplate=o.isNull("searchUrlTemplate")?null:o.optString("searchUrlTemplate",null);
-                  a.source=o.optString("source","user");a.status=o.optString("status","NEEDS ATTENTION");
-                  a.failureReason=o.optString("failureReason","");a.resultSelector=o.optString("resultSelector","article,[role=listitem]");
-                  a.version=o.optInt("version",1);a.confidence=o.optDouble("confidence",.5);a.lastSuccess=o.optLong("lastSuccess",0);
-                  a.lastRepair=o.optLong("lastRepair",0);a.loginCommon=o.optBoolean("loginCommon",false);
-                  a.queryLocator=locatorFrom(o.optJSONObject("queryLocator"));a.submitLocator=locatorFrom(o.optJSONObject("submitLocator"));return a;
-              }
+              public SiteAdapter(String name,String domain,String startUrl){this.name=name;this.domain=domain;this.startUrl=startUrl;this.source="user";this.status="NEEDS ATTENTION";this.version=1;this.confidence=.50;this.failureReason="Teach this site how to search";this.resultSelector="article,[role=listitem]";}
+              public JSONObject toJson(){try{JSONObject o=new JSONObject();o.put("name",name);o.put("domain",domain);o.put("startUrl",startUrl);o.put("searchUrlTemplate",searchUrlTemplate==null?JSONObject.NULL:searchUrlTemplate);o.put("source",source);o.put("status",status);o.put("failureReason",failureReason==null?"":failureReason);o.put("resultSelector",resultSelector==null?"":resultSelector);o.put("version",version);o.put("confidence",confidence);o.put("lastSuccess",lastSuccess);o.put("lastRepair",lastRepair);o.put("loginCommon",loginCommon);if(queryLocator!=null)o.put("queryLocator",locatorJson(queryLocator));if(submitLocator!=null)o.put("submitLocator",locatorJson(submitLocator));return o;}catch(JSONException e){throw new IllegalStateException("Could not serialize site adapter",e);}}
+              private static JSONObject locatorJson(SemanticLocator l)throws JSONException{JSONObject o=new JSONObject();o.put("tag",l.tag);o.put("role",l.role);o.put("ariaLabel",l.ariaLabel);o.put("placeholder",l.placeholder);o.put("name",l.name);o.put("id",l.id);o.put("text",l.text);o.put("css",l.cssFallback);return o;}
+              private static SemanticLocator locatorFrom(JSONObject o){if(o==null)return null;return new SemanticLocator(o.optString("tag"),o.optString("role"),o.optString("ariaLabel"),o.optString("placeholder"),o.optString("name"),o.optString("id"),o.optString("text"),o.optString("css"));}
+              public static SiteAdapter fromJson(String json){try{return fromJson(new JSONObject(json));}catch(JSONException e){throw new IllegalArgumentException("Invalid adapter JSON",e);}}
+              public static SiteAdapter fromJson(JSONObject o){SiteAdapter a=new SiteAdapter(o.optString("name"),o.optString("domain"),o.optString("startUrl"));a.searchUrlTemplate=o.isNull("searchUrlTemplate")?null:o.optString("searchUrlTemplate",null);a.source=o.optString("source","user");a.status=o.optString("status","NEEDS ATTENTION");a.failureReason=o.optString("failureReason","");a.resultSelector=o.optString("resultSelector","article,[role=listitem]");a.version=o.optInt("version",1);a.confidence=o.optDouble("confidence",.5);a.lastSuccess=o.optLong("lastSuccess",0);a.lastRepair=o.optLong("lastRepair",0);a.loginCommon=o.optBoolean("loginCommon",false);a.queryLocator=locatorFrom(o.optJSONObject("queryLocator"));a.submitLocator=locatorFrom(o.optJSONObject("submitLocator"));return a;}
               public boolean isRunnable(){return searchUrlTemplate!=null||queryLocator!=null;}
           }
           JAVA
 
           cat > ai-browser-v2-build/app/src/main/java/com/aibrowser/knowledgehub/AdapterRepository.java <<'JAVA'
           package com.aibrowser.knowledgehub;
-
           import android.content.ContentValues;
           import android.database.Cursor;
           import android.database.sqlite.SQLiteDatabase;
-
           import org.json.JSONArray;
           import org.json.JSONException;
           import org.json.JSONObject;
-
           import java.util.ArrayList;
           import java.util.List;
-
           public class AdapterRepository {
-              private final KnowledgeDb db;
-              public AdapterRepository(KnowledgeDb db){this.db=db;}
-
-              public static boolean shouldReplace(SiteAdapter existing,SiteAdapter incoming){
-                  if(existing==null)return true;
-                  if("user-taught".equals(existing.source)&&existing.lastSuccess>0&&incoming.version<=existing.version)return false;
-                  if(existing.lastSuccess>0&&incoming.version<existing.version)return false;
-                  return incoming.version>existing.version || existing.lastSuccess==0 || "NEEDS ATTENTION".equals(existing.status);
-              }
-
+              private final KnowledgeDb db; public AdapterRepository(KnowledgeDb db){this.db=db;}
+              public static boolean shouldReplace(SiteAdapter existing,SiteAdapter incoming){if(existing==null)return true;if("user-taught".equals(existing.source)&&existing.lastSuccess>0&&incoming.version<=existing.version)return false;if(existing.lastSuccess>0&&incoming.version<existing.version)return false;return incoming.version>existing.version||existing.lastSuccess==0||"NEEDS ATTENTION".equals(existing.status);}
               public void mergeBundled(List<SiteAdapter> bundled){for(SiteAdapter b:bundled){SiteAdapter e=getForDomain(b.domain);if(shouldReplace(e,b))save(b);}}
-              public void save(SiteAdapter a){
-                  ContentValues v=new ContentValues();v.put("domain",a.domain);v.put("name",a.name);v.put("json",a.toJson().toString());v.put("source",a.source);v.put("status",a.status);v.put("confidence",a.confidence);v.put("version",a.version);v.put("last_success",a.lastSuccess);v.put("last_repair",a.lastRepair);v.put("failure_reason",a.failureReason);
-                  db.getWritableDatabase().insertWithOnConflict("adapters",null,v,SQLiteDatabase.CONFLICT_REPLACE);
-              }
-              public SiteAdapter getForDomain(String domain){
-                  try(Cursor c=db.getReadableDatabase().rawQuery("SELECT json FROM adapters WHERE domain=?",new String[]{domain})){if(c.moveToFirst())return SiteAdapter.fromJson(c.getString(0));}return null;
-              }
+              public void save(SiteAdapter a){ContentValues v=new ContentValues();v.put("domain",a.domain);v.put("name",a.name);v.put("json",a.toJson().toString());v.put("source",a.source);v.put("status",a.status);v.put("confidence",a.confidence);v.put("version",a.version);v.put("last_success",a.lastSuccess);v.put("last_repair",a.lastRepair);v.put("failure_reason",a.failureReason);db.getWritableDatabase().insertWithOnConflict("adapters",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
+              public SiteAdapter getForDomain(String domain){try(Cursor c=db.getReadableDatabase().rawQuery("SELECT json FROM adapters WHERE domain=?",new String[]{domain})){if(c.moveToFirst())return SiteAdapter.fromJson(c.getString(0));}return null;}
               public List<SiteAdapter> list(){ArrayList<SiteAdapter> out=new ArrayList<>();try(Cursor c=db.getReadableDatabase().rawQuery("SELECT json FROM adapters ORDER BY name",null)){while(c.moveToNext())out.add(SiteAdapter.fromJson(c.getString(0)));}return out;}
               public void markResult(SiteAdapter a,String status,String reason,boolean success){a.status=status;a.failureReason=reason==null?"":reason;if(success){a.lastSuccess=System.currentTimeMillis();a.confidence=Math.min(1.0,a.confidence+.02);}save(a);}
-              public String exportJson(){
-                  try {
-                      JSONArray arr=new JSONArray();for(SiteAdapter a:list())arr.put(a.toJson());
-                      JSONObject root=new JSONObject();root.put("format","ai-browser-adapters");root.put("version",2);root.put("exportedAt",System.currentTimeMillis());root.put("adapters",arr);
-                      return root.toString(2);
-                  } catch (JSONException e) {
-                      throw new IllegalStateException("Could not export adapters",e);
-                  }
+              public String exportJson(){try{JSONArray arr=new JSONArray();for(SiteAdapter a:list())arr.put(a.toJson());JSONObject root=new JSONObject();root.put("format","ai-browser-adapters");root.put("version",2);root.put("exportedAt",System.currentTimeMillis());root.put("adapters",arr);return root.toString(2);}catch(JSONException e){throw new IllegalStateException("Could not export adapters",e);}}
+              public int importJson(String json){try{JSONObject root=new JSONObject(json);if(!"ai-browser-adapters".equals(root.optString("format")))throw new IllegalArgumentException("Not an AI Browser adapter backup");JSONArray arr=root.optJSONArray("adapters");if(arr==null)return 0;int n=0;for(int i=0;i<arr.length();i++){SiteAdapter incoming=SiteAdapter.fromJson(arr.getJSONObject(i));SiteAdapter existing=getForDomain(incoming.domain);if(shouldReplace(existing,incoming)){save(incoming);n++;}}return n;}catch(JSONException e){throw new IllegalArgumentException("Invalid AI Browser adapter backup",e);}}
+          }
+          JAVA
+
+          cat > ai-browser-v2-build/app/src/main/java/com/aibrowser/knowledgehub/TeachSession.java <<'JAVA'
+          package com.aibrowser.knowledgehub;
+          import org.json.JSONException;
+          import org.json.JSONObject;
+          import java.util.ArrayList;
+          import java.util.List;
+          import java.util.Locale;
+          public class TeachSession {
+              public static class ActionSnapshot {
+                  public final String action,type,value; public final SemanticLocator locator;
+                  public ActionSnapshot(String action,String type,String value,SemanticLocator locator){this.action=action;this.type=type;this.value=value;this.locator=locator;}
+                  public static ActionSnapshot fromJson(String json){try{JSONObject o=new JSONObject(json),l=o.optJSONObject("locator");SemanticLocator loc=l==null?null:new SemanticLocator(l.optString("tag"),l.optString("role"),l.optString("ariaLabel"),l.optString("placeholder"),l.optString("name"),l.optString("id"),l.optString("text"),l.optString("css"));return new ActionSnapshot(o.optString("action"),o.optString("type"),o.optString("value"),loc);}catch(JSONException e){throw new IllegalArgumentException("Invalid teaching action JSON",e);}}
               }
-              public int importJson(String json){
-                  try {
-                      JSONObject root=new JSONObject(json);if(!"ai-browser-adapters".equals(root.optString("format")))throw new IllegalArgumentException("Not an AI Browser adapter backup");
-                      JSONArray arr=root.optJSONArray("adapters");if(arr==null)return 0;int n=0;
-                      for(int i=0;i<arr.length();i++){SiteAdapter incoming=SiteAdapter.fromJson(arr.getJSONObject(i));SiteAdapter existing=getForDomain(incoming.domain);if(shouldReplace(existing,incoming)){save(incoming);n++;}}
-                      return n;
-                  } catch (JSONException e) {
-                      throw new IllegalArgumentException("Invalid AI Browser adapter backup",e);
-                  }
-              }
+              private final List<ActionSnapshot> safe=new ArrayList<>();
+              public synchronized boolean accept(ActionSnapshot a){if(a==null||a.locator==null)return false;String probe=(a.type+" "+a.locator.ariaLabel+" "+a.locator.placeholder+" "+a.locator.name+" "+a.locator.text).toLowerCase(Locale.US);if(probe.contains("password")||probe.contains("passwd")||probe.contains("credit card")||probe.contains("cc-")||probe.contains("cvv")||probe.contains("captcha")||probe.contains("one-time")||probe.contains("otp"))return false;safe.add(a);return true;}
+              public synchronized int size(){return safe.size();}
+              public synchronized String lastTypedValue(){for(int i=safe.size()-1;i>=0;i--)if("input".equals(safe.get(i).action)&&!safe.get(i).value.isEmpty())return safe.get(i).value;return "";}
+              public synchronized SiteAdapter build(SiteAdapter base){SemanticLocator input=null,submit=null;for(ActionSnapshot a:safe){if(input==null&&"input".equals(a.action))input=a.locator;else if(input!=null&&"click".equals(a.action))submit=a.locator;}base.queryLocator=input;base.submitLocator=submit;if(input!=null){base.status="READY";base.failureReason="";base.source="user-taught";base.confidence=.90;base.version=Math.max(2,base.version+1);}return base;}
+          }
+          JAVA
+
+          cat > ai-browser-v2-build/app/src/main/java/com/aibrowser/knowledgehub/SemanticDomBridge.java <<'JAVA'
+          package com.aibrowser.knowledgehub;
+          import org.json.JSONException;
+          import org.json.JSONObject;
+          public final class SemanticDomBridge {
+              private SemanticDomBridge(){}
+              public static String recordingJavascript(){return "(function(){if(window.__aiTeachInstalled)return 'already';window.__aiTeachInstalled=true;"+"function css(e){if(e.id)return '#'+CSS.escape(e.id);if(e.name)return e.tagName.toLowerCase()+'[name=\\\"'+String(e.name).replace(/\\\"/g,'')+'\\\"]';return e.tagName.toLowerCase();}"+"function loc(e){return {tag:(e.tagName||'').toLowerCase(),role:e.getAttribute('role')||'',ariaLabel:e.getAttribute('aria-label')||'',placeholder:e.getAttribute('placeholder')||'',name:e.getAttribute('name')||'',id:e.id||'',text:(e.innerText||e.value||'').trim().slice(0,120),css:css(e)}}"+"function sensitive(e){var s=((e.type||'')+' '+(e.name||'')+' '+(e.getAttribute('aria-label')||'')+' '+(e.getAttribute('placeholder')||'')+' '+(e.autocomplete||'')).toLowerCase();return /password|passwd|captcha|credit|cc-|cvv|one-time|otp/.test(s);}"+"function send(action,e){if(!e||!window.AIBridge)return;var v=(action==='input'&&!sensitive(e))?(e.value||''):'';try{window.AIBridge.record(JSON.stringify({action:action,type:e.type||'',value:v,locator:loc(e)}));}catch(x){}}"+"document.addEventListener('click',function(ev){send('click',ev.target.closest('button,a,input,[role=button],[role=searchbox]')||ev.target)},true);"+"document.addEventListener('change',function(ev){send('input',ev.target)},true);"+"document.addEventListener('keydown',function(ev){if(ev.key==='Enter')send('submit',ev.target)},true);return 'installed';})()";}
+              public static String searchJavascript(SiteAdapter a,String query){try{JSONObject loc=a.queryLocator==null?new JSONObject():locatorJson(a.queryLocator);JSONObject submit=a.submitLocator==null?new JSONObject():locatorJson(a.submitLocator);return "(function(){var wanted="+loc.toString()+",sub="+submit.toString()+",q="+JSONObject.quote(query)+";"+"function score(e,w){var s=0,eq=function(a,b){return a&&b&&String(a).toLowerCase()===String(b).toLowerCase()};if(eq((e.tagName||'').toLowerCase(),w.tag))s+=8;if(eq(e.getAttribute('role')||'',w.role))s+=18;if(eq(e.getAttribute('aria-label')||'',w.ariaLabel))s+=24;if(eq(e.getAttribute('placeholder')||'',w.placeholder))s+=20;if(eq(e.getAttribute('name')||'',w.name))s+=14;if(eq(e.id||'',w.id))s+=10;return s;}"+"function best(w,sel){var es=[].slice.call(document.querySelectorAll(sel)),b=null,bs=-1;es.forEach(function(e){var x=score(e,w);if(x>bs){bs=x;b=e}});return b;}"+"var e=best(wanted,'input,textarea,[role=searchbox],[contenteditable=true]');if(!e)return 'NO_QUERY_CONTROL';e.focus();"+"try{var p=Object.getPrototypeOf(e),d=Object.getOwnPropertyDescriptor(p,'value');if(d&&d.set)d.set.call(e,q);else e.value=q;}catch(x){e.value=q;}"+"e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));"+"var b=Object.keys(sub).length?best(sub,'button,input[type=submit],[role=button],a'):null;if(b){b.click();return 'CLICKED_SUBMIT';}"+"if(e.form){if(e.form.requestSubmit)e.form.requestSubmit();else e.form.submit();return 'FORM_SUBMIT';}"+"e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));e.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));return 'ENTER';})()";}catch(JSONException e){throw new IllegalStateException("Could not build search automation script",e);}}
+              public static String extractJavascript(){return "(function(){function clean(s){return (s||'').replace(/\\s+/g,' ').trim()}var out=[],seen={};"+"var nodes=[].slice.call(document.querySelectorAll('article,[role=listitem],main a[href],main section'));"+"for(var i=0;i<nodes.length&&out.length<10;i++){var n=nodes[i],t=clean(n.innerText);if(t.length<18||t.length>1200)continue;var a=n.matches&&n.matches('a[href]')?n:n.querySelector&&n.querySelector('a[href]');var u=a?a.href:'';var title=t.split(/[\\n.!?]/)[0].slice(0,180);var key=title+'|'+u;if(seen[key])continue;seen[key]=1;out.push({title:title||document.title,snippet:t.slice(0,500),url:u});}"+"return JSON.stringify({url:location.href,title:document.title||'',body:clean(document.body?document.body.innerText:'').slice(0,5000),items:out});})()";}
+              private static JSONObject locatorJson(SemanticLocator l)throws JSONException{JSONObject o=new JSONObject();o.put("tag",l.tag);o.put("role",l.role);o.put("ariaLabel",l.ariaLabel);o.put("placeholder",l.placeholder);o.put("name",l.name);o.put("id",l.id);o.put("text",l.text);o.put("css",l.cssFallback);return o;}
           }
           JAVA
       - name: Run v2 unit tests

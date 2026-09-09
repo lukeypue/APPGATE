@@ -1,9 +1,9 @@
-name: Build AppGate APK
+name: Build AI Browser APK
 
 on:
   push:
   pull_request:
-  workflow_dispatch:        # adds a manual "Run workflow" button in the Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
@@ -23,7 +23,6 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      # Works whether the project files are at the repo root or inside a subfolder
       - name: Locate the Android project
         id: proj
         run: |
@@ -32,13 +31,11 @@ jobs:
           else
             FOUND=$(find . -maxdepth 3 -name settings.gradle -not -path "*/node_modules/*" | head -1)
             if [ -z "$FOUND" ]; then
-              echo "ERROR: settings.gradle not found anywhere in the repo."
-              echo "Make sure the AppGate project files (app folder, settings.gradle, build.gradle) were uploaded."
+              echo "ERROR: settings.gradle not found."
               exit 1
             fi
             echo "dir=$(dirname "$FOUND")" >> "$GITHUB_OUTPUT"
           fi
-          echo "Building in: $(cat "$GITHUB_OUTPUT")"
 
       - name: Run unit tests
         working-directory: ${{ steps.proj.outputs.dir }}
@@ -51,6 +48,6 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AppGate-debug-apk
+          name: AI-Browser-debug-apk
           path: '**/app/build/outputs/apk/debug/app-debug.apk'
           if-no-files-found: error

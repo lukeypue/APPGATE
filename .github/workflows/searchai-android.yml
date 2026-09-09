@@ -5,7 +5,7 @@ on:
     branches:
       - searchai-android-build
     paths:
-      - 'searchai-android/**'
+      - 'searchai-android/BUILD_READY'
       - '.github/workflows/searchai-android.yml'
   workflow_dispatch:
 
@@ -34,13 +34,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Unpack SearchAI Android source
+      - name: Verify SearchAI Android source
         shell: bash
-        run: |
-          mkdir -p searchai-android/project
-          base64 -d searchai-android/SearchAI-Android-Source.b64 > /tmp/SearchAI-Android-Source.zip
-          unzip -q /tmp/SearchAI-Android-Source.zip -d searchai-android/project
-          test -f searchai-android/project/settings.gradle.kts
+        run: test -f searchai-android/project/settings.gradle.kts
 
       - name: Run Android unit tests
         working-directory: searchai-android/project

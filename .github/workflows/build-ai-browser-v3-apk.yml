@@ -5,6 +5,7 @@ on:
     branches: [ ai-browser-android-v3 ]
   workflow_dispatch:
 
+# v3 source is reconstructed from checksum-verified chunks.
 jobs:
   build:
     runs-on: ubuntu-latest

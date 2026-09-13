@@ -39,9 +39,20 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
     private var pending: PreparedExploration? = null
 
     fun seedPriorityHost(host: String) {
+        val seed = PrioritySiteSeeds.seedForHost(host) ?: return
         val current = repository.load(host)
-        if (current.nodes.isNotEmpty() || current.edges.isNotEmpty()) return
-        PrioritySiteSeeds.seedForHost(host)?.let(repository::save)
+        val knownIds = current.edges.map { it.id }.toSet()
+        val missing = seed.edges.filterNot { it.id in knownIds }
+        if (missing.isEmpty()) return
+        repository.save(
+            current.copy(
+                readiness = if (current.readiness == ReadinessLevel.UNMAPPED) ReadinessLevel.LEARNING else current.readiness,
+                edges = current.edges + missing,
+                unresolvedBranches = maxOf(current.unresolvedBranches, seed.unresolvedBranches),
+                coverageScore = maxOf(current.coverageScore, seed.coverageScore),
+                revision = current.revision + 1
+            )
+        )
     }
 
     fun observe(webView: WebView, callback: (Result<SiteBrainObservation>) -> Unit) {
@@ -77,7 +88,7 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
                     }
                 }
 
-                state = if (snapshot.challengeDetected || snapshot.pageType == PageType.CHALLENGE || snapshot.pageType == PageType.LOGIN && snapshot.loginDetected) {
+                state = if (requiresHuman(snapshot)) {
                     SiteBrainControllerState.WAITING_FOR_HUMAN
                 } else {
                     SiteBrainControllerState.SEARCHING
@@ -163,6 +174,18 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
         capture(webView) { result ->
             result.map { after ->
                 repository.recordNode(after)
+                if (requiresHuman(after)) {
+                    val brain = repository.load(active.before.host)
+                    val verification = VerificationResult(
+                        success = false,
+                        confidenceDelta = 0.0,
+                        evidence = listOf("human verification required")
+                    )
+                    pending = null
+                    state = SiteBrainControllerState.WAITING_FOR_HUMAN
+                    return@map ExplorationVerification(verification, after, brain)
+                }
+
                 val verification = OutcomeVerifier.verify(active.before, active.edge, after)
                 val brain = if (verification.success) {
                     repository.markSuccess(
@@ -175,11 +198,7 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
                     repository.markFailure(active.before.host, active.edge.id)
                 }
                 pending = null
-                state = if (after.challengeDetected || after.pageType == PageType.CHALLENGE) {
-                    SiteBrainControllerState.WAITING_FOR_HUMAN
-                } else {
-                    SiteBrainControllerState.SEARCHING
-                }
+                state = SiteBrainControllerState.SEARCHING
                 ExplorationVerification(verification, after, brain)
             }.also(callback)
         }
@@ -208,6 +227,10 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
             }.also(callback)
         }
     }
+
+    private fun requiresHuman(snapshot: PageSnapshot): Boolean =
+        snapshot.challengeDetected || snapshot.pageType == PageType.CHALLENGE ||
+            (snapshot.pageType == PageType.LOGIN && snapshot.loginDetected)
 
     private fun expectedPageType(kind: ActionKind): PageType? = when (kind) {
         ActionKind.SEARCH, ActionKind.APPLY_FILTER, ActionKind.SORT, ActionKind.PAGINATE -> PageType.RESULT_LIST

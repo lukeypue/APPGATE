@@ -1,6 +1,11 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  classifyPageBoundary,
+  scoreDiscoveryLink,
+  calculatePublicCoverage
+} from './scout-policy.mjs';
 
 const outDir = process.env.SITEBRAIN_OUT || path.resolve('out');
 fs.mkdirSync(outDir, { recursive: true });
@@ -20,7 +25,6 @@ const sites = [
 ];
 
 const dangerous = /\b(buy|bid|checkout|pay|purchase|message|contact|send|post|publish|upload|delete|remove|follow|subscribe|account|profile|sign\s?in|log\s?in|login|register|create account)\b/i;
-const challenge = /captcha|verify you are human|security check|checkpoint|unusual traffic|confirm your identity|access denied/i;
 const email = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig;
 const phone = /(?<!\d)(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}(?!\d)/g;
 const secret = /\b(cookie|session|token|password|authorization|bearer)\b\s*[:=]?\s*[^\s,;]*/ig;
@@ -34,7 +38,7 @@ function pageType(url,title,labels){
   if (/login|sign.?in/.test(t)) return 'LOGIN';
   if (/search|results|listings|inventory|cars for sale/.test(t)) return 'RESULTS';
   if (/detail|vehicle|listing|item|product/.test(t)) return 'DETAIL';
-  if (/category|browse|shop by/.test(t)) return 'CATEGORY';
+  if (/category|browse|shop by|marketplace/.test(t)) return 'CATEGORY';
   return 'HOME';
 }
 
@@ -43,7 +47,19 @@ function safeLink(label, href, hosts){
   let u; try { u = new URL(href); } catch { return false; }
   if (!['http:','https:'].includes(u.protocol) || !hostAllowed(u.hostname.toLowerCase(), hosts)) return false;
   if (/logout|signout|delete|remove|checkout|cart|payment|messages?|compose|settings|account/i.test(u.pathname + u.search)) return false;
-  return true;
+  return scoreDiscoveryLink(label, href) > 0;
+}
+
+function addCapabilities(capabilities, type, controls, url){
+  if (type === 'RESULTS') capabilities.add('RESULTS');
+  if (type === 'DETAIL') capabilities.add('DETAIL');
+  if (type === 'CATEGORY') capabilities.add('CATEGORY');
+  const combined = controls.map(c => `${c.role} ${c.type} ${c.label}`).join(' ').toLowerCase();
+  if (/searchbox|type.?search|\bsearch\b/.test(combined)) capabilities.add('SEARCH');
+  if (/filter/.test(combined) || /filter/i.test(url)) capabilities.add('FILTER');
+  if (/sort/.test(combined) || /sort=/i.test(url)) capabilities.add('SORT');
+  if (/next|previous|pagination|page\s*\d/.test(combined) || /[?&]page=/i.test(url)) capabilities.add('PAGINATION');
+  if (/category|browse|shop by|marketplace/.test(combined)) capabilities.add('CATEGORY');
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -57,6 +73,7 @@ try {
     const nodes = [];
     const edges = [];
     const boundaries = [];
+    const capabilities = new Set();
     const maxPages = key === 'facebook_marketplace' ? 3 : 8;
 
     while (queue.length && seen.size < maxPages) {
@@ -70,8 +87,9 @@ try {
         await page.waitForTimeout(1200);
         const title = clean(await page.title());
         const visible = clean((await page.locator('body').innerText({ timeout: 4000 }).catch(()=>'' )).slice(0,12000));
-        if (challenge.test(`${title} ${visible}`)) {
-          boundaries.push({ route: u.pathname || '/', reason: 'HUMAN_OR_AUTH_REQUIRED' });
+        const boundary = classifyPageBoundary(title, visible);
+        if (boundary) {
+          boundaries.push({ route: u.pathname || '/', reason: boundary });
           continue;
         }
         const controls = await page.locator('a[href],button,input,[role="button"],[role="link"],[role="searchbox"]').evaluateAll(els => els.slice(0,350).map((el,i) => ({
@@ -83,26 +101,47 @@ try {
           i
         })));
         const labels = controls.map(c => clean(c.label)).filter(Boolean);
+        const actualUrl = page.url();
+        const type = pageType(actualUrl, title, labels);
+        addCapabilities(capabilities, type, controls, actualUrl);
         const id = `n${nodes.length + 1}`;
-        nodes.push({ id, pageType: pageType(page.url(), title, labels), route: clean(new URL(page.url()).pathname || '/'), summary: title });
+        nodes.push({ id, pageType: type, route: clean(new URL(actualUrl).pathname || '/'), summary: title });
         if (item.from) edges.push({ from: item.from, to: id, action: 'NAVIGATE', label: clean(item.label), confidence: 0.70, verified: true });
 
+        const candidates = [];
         for (const c of controls) {
           const label = clean(c.label);
           const href = c.href;
           if (!safeLink(label, href, hosts)) continue;
-          let dest; try { dest = new URL(href, page.url()); } catch { continue; }
+          let dest; try { dest = new URL(href, actualUrl); } catch { continue; }
           const destCanonical = `${dest.protocol}//${dest.hostname}${dest.pathname}`.replace(/\/$/,'');
-          if (!seen.has(destCanonical) && queue.length < 60) queue.push({ url: dest.href, from: id, label: label || 'link' });
+          if (!seen.has(destCanonical)) {
+            candidates.push({ url: dest.href, from: id, label: label || 'link', score: scoreDiscoveryLink(label, dest.href) });
+          }
+        }
+        candidates.sort((a,b) => b.score - a.score);
+        for (const candidate of candidates.slice(0,12)) {
+          if (queue.length >= 60) break;
+          queue.push(candidate);
         }
       } catch (err) {
         boundaries.push({ route: u.pathname || '/', reason: `UNRESOLVED:${clean(err?.name || 'error')}` });
       }
     }
 
-    const discovered = Math.max(1, nodes.length + boundaries.length);
-    const coverage = Math.min(100, Math.round((nodes.length / discovered) * 100));
-    const readiness = nodes.length >= 5 ? 'SEARCH_READY' : nodes.length ? 'LEARNING' : 'UNMAPPED';
+    const coverage = calculatePublicCoverage({
+      nodes: nodes.length,
+      verifiedTransitions: edges.length,
+      boundaries: boundaries.length,
+      capabilities: [...capabilities]
+    });
+    const readiness = coverage === 100
+      ? 'DEEP_SEARCH_READY'
+      : coverage >= 45 && edges.length >= 2
+        ? 'SEARCH_READY'
+        : nodes.length
+          ? 'LEARNING'
+          : 'UNMAPPED';
     const domain = hosts[0];
     const lines = [`SITEBRAIN|1|${b64(domain)}|${Date.now()}|${coverage}|${b64(readiness)}`];
     for (const h of hosts) lines.push(`HOST|${b64(h)}`);
@@ -110,7 +149,16 @@ try {
     for (const e of edges) lines.push(`EDGE|${b64(e.from)}|${b64(e.to)}|${b64(e.action)}|${b64(e.label)}|${e.confidence}|${e.verified}`);
     for (const b of boundaries) lines.push(`BOUNDARY|${b64(clean(b.route))}|${b64(clean(b.reason))}`);
     fs.writeFileSync(path.join(outDir, `${key}.sbp`), lines.join('\n') + '\n');
-    summary.push({ key, entry, pages: nodes.length, verifiedTransitions: edges.length, boundaries: boundaries.length, coverage, readiness });
+    summary.push({
+      key,
+      entry,
+      pages: nodes.length,
+      verifiedTransitions: edges.length,
+      boundaries: boundaries.length,
+      capabilities: [...capabilities].sort(),
+      coverage,
+      readiness
+    });
     await context.close();
     await new Promise(r => setTimeout(r, 1200));
   }

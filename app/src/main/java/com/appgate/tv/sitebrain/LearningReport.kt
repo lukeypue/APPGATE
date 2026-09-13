@@ -24,6 +24,7 @@ object LearningReportWriter {
     fun encode(events: List<LearningEvent>): String {
         val root = JSONObject()
         root.put("schemaVersion", 1)
+        root.put("reportType", "site_brain_search_run")
         val arr = JSONArray()
         events.forEach { e ->
             arr.put(JSONObject().apply {

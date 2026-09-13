@@ -11,8 +11,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 8
-        versionName "4.1.0-deep-search"
+        versionCode 9
+        versionName "4.2.0-certified-source-beta"
     }
 
     buildTypes {

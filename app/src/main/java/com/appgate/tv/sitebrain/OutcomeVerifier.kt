@@ -11,7 +11,7 @@ object OutcomeVerifier {
         val evidence = mutableListOf<String>()
         if (before.routeSignature != after.routeSignature) evidence += "route changed"
         if (before.pageType != after.pageType) evidence += "page type ${before.pageType} -> ${after.pageType}"
-        if (before.headings.map(String::lowercase) != after.headings.map(String::lowercase)) evidence += "headings changed"
+        if (before.headings.map { it.lowercase() } != after.headings.map { it.lowercase() }) evidence += "headings changed"
         if (selectedLabels(before) != selectedLabels(after)) evidence += "selected controls changed"
         if (before.fingerprint != after.fingerprint) evidence += "semantic page state changed"
         if (action.expectedPageType != null && after.pageType == action.expectedPageType) evidence += "expected page type reached"
@@ -29,6 +29,6 @@ object OutcomeVerifier {
     private fun selectedLabels(snapshot: PageSnapshot): Set<String> = snapshot.elements
         .filter { it.selected }
         .map { it.label.lowercase().trim() }
-        .filter(String::isNotBlank)
+        .filter { it.isNotBlank() }
         .toSet()
 }

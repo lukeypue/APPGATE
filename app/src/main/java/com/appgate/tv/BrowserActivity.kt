@@ -587,7 +587,7 @@ class BrowserActivity : AppCompatActivity() {
             if (parsed.requiredTerms.isNotEmpty()) append("Deep match: ${parsed.requiredTerms.joinToString()}")
         }.ifBlank { "No hard constraints detected" }
         list.addView(label(constraintText, 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 6, 0, 6) })
-        list.addView(label("$verifiedCount verified · $possibleCount possible · searched ${index.coerceAtMost(names.size)} sources", 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 0, 0, 14) })
+        list.addView(label("$verifiedCount verified · $possibleCount possible · ${candidates.size} candidates found · searched ${index.coerceAtMost(names.size)} sources", 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 0, 0, 14) })
 
         if (siteBrainStatuses.isNotEmpty()) {
             list.addView(label("Site Brain Learning", 17f, Color.WHITE, true))
@@ -637,19 +637,73 @@ class BrowserActivity : AppCompatActivity() {
             failures.distinct().take(30).forEach { list.addView(label("• $it", 14f, Color.rgb(235, 175, 145), false)) }
         }
 
-        if (learningEvents.isNotEmpty()) {
-            list.addView(Button(this).apply {
-                text = "Share Learning Data"
-                setOnClickListener {
-                    val report = LearningReportWriter.encode(learningEvents)
-                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                        type = "application/json"
-                        putExtra(Intent.EXTRA_SUBJECT, "AI Browser Site Brain Learning Data")
-                        putExtra(Intent.EXTRA_TEXT, report)
-                    }, "Share Site Brain learning data"))
+        list.addView(Button(this).apply {
+            text = "SHARE TEST DATA"
+            setOnClickListener {
+                val now = System.currentTimeMillis()
+                val diagnosticEvents = learningEvents.toMutableList()
+                diagnosticEvents += LearningEvent(
+                    timestamp = now,
+                    source = "Search Run",
+                    host = "",
+                    pageType = "SUMMARY",
+                    route = "",
+                    action = "SEARCH_SUMMARY",
+                    outcome = if (results.isEmpty()) "NO_MATCHES" else "RESULTS_FOUND",
+                    coverageBefore = 0.0,
+                    coverageAfter = 0.0,
+                    note = "query=${parsed.raw}; searched=${index.coerceAtMost(names.size)}/${names.size}; candidates=${candidates.size}; verified=$verifiedCount; possible=$possibleCount; sources=${names.joinToString(" | ")}"
+                )
+                failures.distinct().forEach { note ->
+                    diagnosticEvents += LearningEvent(
+                        timestamp = now,
+                        source = note.substringBefore(':').ifBlank { "Source" },
+                        host = "",
+                        pageType = "DIAGNOSTIC",
+                        route = "",
+                        action = "SOURCE_NOTE",
+                        outcome = "OBSERVED",
+                        coverageBefore = 0.0,
+                        coverageAfter = 0.0,
+                        note = note
+                    )
                 }
-            })
-        }
+                siteBrainStatuses.forEach { (host, line) ->
+                    diagnosticEvents += LearningEvent(
+                        timestamp = now,
+                        source = host,
+                        host = host,
+                        pageType = "SITE_BRAIN_STATUS",
+                        route = "",
+                        action = "STATUS",
+                        outcome = "OBSERVED",
+                        coverageBefore = 0.0,
+                        coverageAfter = 0.0,
+                        note = line
+                    )
+                }
+                sourceCounts.forEach { (source, count) ->
+                    diagnosticEvents += LearningEvent(
+                        timestamp = now,
+                        source = source,
+                        host = "",
+                        pageType = "CANDIDATE_COUNT",
+                        route = "",
+                        action = "CANDIDATES",
+                        outcome = "OBSERVED",
+                        coverageBefore = 0.0,
+                        coverageAfter = 0.0,
+                        note = "count=$count"
+                    )
+                }
+                val report = LearningReportWriter.encode(diagnosticEvents)
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_SUBJECT, "AI Browser Test Data")
+                    putExtra(Intent.EXTRA_TEXT, report)
+                }, "Share AI Browser test data"))
+            }
+        })
         list.addView(Button(this).apply { text = "New Search"; setOnClickListener { finish() } })
         root.addView(list)
         setContentView(root)

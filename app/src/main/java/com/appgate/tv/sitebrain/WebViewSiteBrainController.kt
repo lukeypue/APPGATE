@@ -216,7 +216,7 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
             ReadinessLevel.DEEP_SEARCH_READY -> "Deep Search Ready"
         }
         val percent = (observation.brain.coverageScore * 100).toInt().coerceIn(0, 100)
-        return "Site Brain: $readiness · $percent% mapped · ${observation.safeActionsFound} safe controls learned"
+        return "Site Brain: $readiness · $percent% mapped · ${observation.safeActionsFound} safe controls seen"
     }
 
     private fun capture(webView: WebView, callback: (Result<PageSnapshot>) -> Unit) {

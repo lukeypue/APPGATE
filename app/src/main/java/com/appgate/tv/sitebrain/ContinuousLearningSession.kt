@@ -1,10 +1,11 @@
 package com.appgate.tv.sitebrain
 
 class ContinuousLearningSession private constructor(
-    val policy: AutonomousLearningPolicy,
-    var actionsTaken: Int = 0,
-        private set
+    val policy: AutonomousLearningPolicy
 ) {
+    var actionsTaken: Int = 0
+        private set
+
     fun recordAction() {
         if (actionsTaken < policy.maxActions) actionsTaken++
     }

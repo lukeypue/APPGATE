@@ -11,8 +11,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 9
-        versionName "4.2.0-certified-source-beta"
+        versionCode 10
+        versionName "5.0.0-site-brain-alpha"
     }
 
     buildTypes {
@@ -29,4 +29,5 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }

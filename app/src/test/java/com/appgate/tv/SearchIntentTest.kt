@@ -45,10 +45,12 @@ class SearchIntentTest {
     }
 
     @Test
-    fun hardConstraintsRequireEvidenceOnCandidateCard() {
+    fun hardConstraintsCanBeDeferredWhenSearchCardOmitsEvidence() {
         val parsed = SearchIntentParser.parse("ford expedition under 8k under 150k miles")
-        assertFalse(SearchMatcher.summaryCouldMatch("Ford Expedition vehicles near you. Browse listings and filters.", parsed))
-        assertFalse(SearchMatcher.summaryCouldMatch("Ford Expedition $7,500. Browse listings and filters.", parsed))
+        assertTrue(SearchMatcher.summaryCouldMatch("Ford Expedition vehicles near you. Browse listings and filters.", parsed))
+        assertTrue(SearchMatcher.summaryCouldMatch("Ford Expedition $7,500. Browse listings and filters.", parsed))
+        assertFalse(SearchMatcher.summaryCouldMatch("Ford Expedition $12,500 120,000 miles", parsed))
+        assertFalse(SearchMatcher.summaryCouldMatch("Ford Expedition $7,500 180,000 miles", parsed))
         assertTrue(SearchMatcher.summaryCouldMatch("2003 Ford Expedition Eddie Bauer 149,000 Miles $7,500", parsed))
     }
 
@@ -67,6 +69,14 @@ class SearchIntentTest {
         assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition Eddie Bauer $9,500 149,000 miles. Rear axle ratio 3.73.", parsed))
         assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition Eddie Bauer $7,500 169,000 miles. Rear axle ratio 3.73.", parsed))
         assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition Eddie Bauer $7,500 149,000 miles. Rear axle ratio 3.31.", parsed))
+    }
+
+    @Test
+    fun finalDeepVerificationEnforcesHardLimitsWithoutDescriptionRequirement() {
+        val parsed = SearchIntentParser.parse("ford expedition under 8k under 150k miles")
+        assertTrue(SearchMatcher.deepTextMatches("2003 Ford Expedition $7,500 149,000 miles", parsed))
+        assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition $9,500 149,000 miles", parsed))
+        assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition $7,500 169,000 miles", parsed))
     }
 
     @Test

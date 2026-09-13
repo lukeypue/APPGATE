@@ -8,13 +8,20 @@ data class ParsedSearch(
     val coreQuery: String,
     val maxPrice: Int?,
     val maxMileage: Int?,
-    val requiredTerms: List<String>
+    val requiredTerms: List<String>,
+    val conceptTerms: List<String> = emptyList(),
+    val hardConstraints: Map<String, String> = emptyMap(),
+    val optionalTerms: List<String> = emptyList(),
+    val discoveredVocabulary: List<String> = emptyList()
 )
 
 object SearchIntentParser {
     private val mileageRegex = Regex("""(?i)\b(?:under|below|less\s+than|max(?:imum)?|up\s+to)\s*([\d,.]+)\s*([kK]?)\s*(?:miles?|mi)\b""")
     private val deepRegex = Regex("""(?i)\b(?:with|must\s+have|including)\s+(?:a\s+|an\s+)?(.+?)\s*$""")
     private val priceRegex = Regex("""(?i)\b(?:under|below|less\s+than|max(?:imum)?(?:\s+price)?|up\s+to)\s*\$?\s*([\d,.]+)\s*([kK]?)\s*(?:dollars?|bucks?)?\b""")
+    private val optionalRegex = Regex("""(?i)\b(?:prefer|preferred|ideally|bonus if|nice to have)\s+(.+?)(?:,|;|$)""")
+    private val conceptTokenRegex = Regex("""[a-z0-9]+(?:\.[0-9]+)?""")
+    private val conceptStopWords = setOf("a", "an", "the", "find", "search", "show", "me", "for", "under", "below", "with", "and", "or", "used", "please")
 
     fun parse(input: String): ParsedSearch {
         val raw = input.trim()
@@ -25,6 +32,9 @@ object SearchIntentParser {
 
         val required = deepRegex.find(working)?.groupValues?.getOrNull(1)?.trim()?.trimEnd('.', ',', ';')
         working = deepRegex.replace(working, " ")
+
+        val optional = optionalRegex.findAll(working).mapNotNull { it.groupValues.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) }.toList()
+        working = optionalRegex.replace(working, " ")
 
         val price = priceRegex.find(working)?.let { parseAmount(it.groupValues[1], it.groupValues[2]) }
         working = priceRegex.replace(working, " ")
@@ -38,12 +48,27 @@ object SearchIntentParser {
             .trim(' ', ',', ';', '-')
             .ifBlank { raw }
 
+        val concepts = conceptTokenRegex.findAll(core.lowercase())
+            .map { it.value }
+            .filterNot { it in conceptStopWords || it.length < 2 }
+            .distinct()
+            .toList()
+
+        val constraints = linkedMapOf<String, String>()
+        price?.let { constraints["max_price"] = it.toString() }
+        mileage?.let { constraints["max_mileage"] = it.toString() }
+        required?.takeIf { it.isNotBlank() }?.let { constraints["detail_required"] = it }
+
         return ParsedSearch(
             raw = raw,
             coreQuery = core,
             maxPrice = price,
             maxMileage = mileage,
-            requiredTerms = listOfNotNull(required?.takeIf { it.isNotBlank() })
+            requiredTerms = listOfNotNull(required?.takeIf { it.isNotBlank() }),
+            conceptTerms = concepts,
+            hardConstraints = constraints,
+            optionalTerms = optional,
+            discoveredVocabulary = emptyList()
         )
     }
 

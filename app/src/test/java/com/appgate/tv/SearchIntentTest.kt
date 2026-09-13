@@ -55,25 +55,25 @@ class SearchIntentTest {
     @Test
     fun deepSearchKeepsCandidateWhenCardOmitsPriceAndMileage() {
         val parsed = SearchIntentParser.parse("ford expedition under 8k under 150k miles with a 3.73 axle")
-        assertTrue(SearchMatcher.candidateCouldMatch("2003 Ford Expedition Eddie Bauer", parsed))
-        assertFalse(SearchMatcher.candidateCouldMatch("2003 Ford Expedition Eddie Bauer $12,900", parsed))
-        assertFalse(SearchMatcher.candidateCouldMatch("2003 Ford Expedition Eddie Bauer 189,000 miles $7,500", parsed))
+        assertTrue(SearchMatcher.summaryCouldMatch("2003 Ford Expedition Eddie Bauer", parsed))
+        assertFalse(SearchMatcher.summaryCouldMatch("2003 Ford Expedition Eddie Bauer $12,900", parsed))
+        assertFalse(SearchMatcher.summaryCouldMatch("2003 Ford Expedition Eddie Bauer 189,000 miles $7,500", parsed))
     }
 
     @Test
     fun finalDeepVerificationRequiresEveryHardConstraint() {
         val parsed = SearchIntentParser.parse("ford expedition under 8k under 150k miles with a 3.73 axle")
-        assertTrue(SearchMatcher.deepListingMatches("2003 Ford Expedition Eddie Bauer $7,500 149,000 miles. Rear axle ratio 3.73.", parsed))
-        assertFalse(SearchMatcher.deepListingMatches("2003 Ford Expedition Eddie Bauer $9,500 149,000 miles. Rear axle ratio 3.73.", parsed))
-        assertFalse(SearchMatcher.deepListingMatches("2003 Ford Expedition Eddie Bauer $7,500 169,000 miles. Rear axle ratio 3.73.", parsed))
-        assertFalse(SearchMatcher.deepListingMatches("2003 Ford Expedition Eddie Bauer $7,500 149,000 miles. Rear axle ratio 3.31.", parsed))
+        assertTrue(SearchMatcher.deepTextMatches("2003 Ford Expedition Eddie Bauer $7,500 149,000 miles. Rear axle ratio 3.73.", parsed))
+        assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition Eddie Bauer $9,500 149,000 miles. Rear axle ratio 3.73.", parsed))
+        assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition Eddie Bauer $7,500 169,000 miles. Rear axle ratio 3.73.", parsed))
+        assertFalse(SearchMatcher.deepTextMatches("2003 Ford Expedition Eddie Bauer $7,500 149,000 miles. Rear axle ratio 3.31.", parsed))
     }
 
     @Test
     fun deepTermsCanMatchWordsSeparatedInDescription() {
         val parsed = SearchIntentParser.parse("expedition under 8k with a 3.73 axle")
-        assertTrue(SearchMatcher.deepTextMatches("Factory tow package. Rear axle ratio is 3.73 with limited slip.", parsed))
-        assertFalse(SearchMatcher.deepTextMatches("Rear axle ratio 3.31. Clean interior.", parsed))
+        assertTrue(SearchMatcher.deepTextMatches("Factory tow package. Rear axle ratio is 3.73 with limited slip. $7,500", parsed))
+        assertFalse(SearchMatcher.deepTextMatches("Rear axle ratio 3.31. Clean interior. $7,500", parsed))
     }
 
     @Test

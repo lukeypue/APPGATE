@@ -1,0 +1,40 @@
+name: Site Brain Public Scout
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 8 * * *'
+  push:
+    paths:
+      - 'sitebrain-lab/live-scout/**'
+      - '.github/workflows/sitebrain-scout.yml'
+
+jobs:
+  public-scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: sitebrain-lab/live-scout/package-lock.json
+      - name: Install scout dependencies
+        working-directory: sitebrain-lab/live-scout
+        run: |
+          npm install --package-lock-only
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Scout public website structure
+        working-directory: sitebrain-lab/live-scout
+        env:
+          SITEBRAIN_OUT: out
+        run: npm run scout
+      - name: Upload Site Brain knowledge packs
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitebrain-public-knowledge-packs
+          path: sitebrain-lab/live-scout/out/**
+          if-no-files-found: error
+          retention-days: 30

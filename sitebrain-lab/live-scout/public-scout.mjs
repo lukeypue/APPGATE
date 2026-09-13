@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   classifyPageBoundary,
+  classifyRouteBoundary,
   scoreDiscoveryLink,
   calculatePublicCoverage
 } from './scout-policy.mjs';
@@ -33,12 +34,13 @@ const b64 = s => Buffer.from(String(s),'utf8').toString('base64url');
 const hostAllowed = (hostname, hosts) => hosts.some(h => hostname === h || hostname.endsWith('.' + h) || h.endsWith('.' + hostname));
 
 function pageType(url,title,labels){
-  const t = `${url} ${title} ${labels.join(' ')}`.toLowerCase();
-  if (/captcha|checkpoint|security check/.test(t)) return 'CHALLENGE';
-  if (/login|sign.?in/.test(t)) return 'LOGIN';
-  if (/search|results|listings|inventory|cars for sale/.test(t)) return 'RESULTS';
-  if (/detail|vehicle|listing|item|product/.test(t)) return 'DETAIL';
-  if (/category|browse|shop by|marketplace/.test(t)) return 'CATEGORY';
+  const words = `${title} ${labels.join(' ')}`.toLowerCase();
+  const route = url.toLowerCase();
+  if (/captcha|checkpoint|security check/.test(words)) return 'CHALLENGE';
+  if (/\b(?:login|sign.?in)\b/.test(words)) return 'LOGIN';
+  if (/\/search(?:\/|\?|$)|[?&](?:page|sort|filter|make|model)=/.test(route) || /\b(?:results|listings|inventory)\b|cars for sale/.test(words)) return 'RESULTS';
+  if (/\/item(?:\/|$)|\/listing(?:\/|$)|\/detail(?:\/|$)/.test(route) || /\b(?:vehicle|listing|product) details?\b/.test(words)) return 'DETAIL';
+  if (/\/category(?:\/|$)|\/browse(?:\/|$)|\/marketplace(?:\/|$)/.test(route) || /\b(?:category|browse|shop by|marketplace)\b/.test(words)) return 'CATEGORY';
   return 'HOME';
 }
 
@@ -46,7 +48,7 @@ function safeLink(label, href, hosts){
   if (!href || dangerous.test(label) || dangerous.test(href)) return false;
   let u; try { u = new URL(href); } catch { return false; }
   if (!['http:','https:'].includes(u.protocol) || !hostAllowed(u.hostname.toLowerCase(), hosts)) return false;
-  if (/logout|signout|delete|remove|checkout|cart|payment|messages?|compose|settings|account/i.test(u.pathname + u.search)) return false;
+  if (classifyRouteBoundary(u.href)) return false;
   return scoreDiscoveryLink(label, href) > 0;
 }
 
@@ -56,10 +58,10 @@ function addCapabilities(capabilities, type, controls, url){
   if (type === 'CATEGORY') capabilities.add('CATEGORY');
   const combined = controls.map(c => `${c.role} ${c.type} ${c.label}`).join(' ').toLowerCase();
   if (/searchbox|type.?search|\bsearch\b/.test(combined)) capabilities.add('SEARCH');
-  if (/filter/.test(combined) || /filter/i.test(url)) capabilities.add('FILTER');
-  if (/sort/.test(combined) || /sort=/i.test(url)) capabilities.add('SORT');
-  if (/next|previous|pagination|page\s*\d/.test(combined) || /[?&]page=/i.test(url)) capabilities.add('PAGINATION');
-  if (/category|browse|shop by|marketplace/.test(combined)) capabilities.add('CATEGORY');
+  if (/\bfilter\b/.test(combined) || /[?&]filter=/i.test(url)) capabilities.add('FILTER');
+  if (/\bsort\b/.test(combined) || /[?&]sort=/i.test(url)) capabilities.add('SORT');
+  if (/\bnext\b|\bprevious\b|pagination|page\s*\d/.test(combined) || /[?&]page=/i.test(url)) capabilities.add('PAGINATION');
+  if (/\bcategory\b|\bcategories\b|\bbrowse\b|shop by|\bmarketplace\b/.test(combined)) capabilities.add('CATEGORY');
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -85,11 +87,17 @@ try {
       try {
         await page.goto(item.url, { waitUntil: 'domcontentloaded', timeout: 25000 });
         await page.waitForTimeout(1200);
+        const actualUrl = page.url();
+        const routeBoundary = classifyRouteBoundary(actualUrl);
+        if (routeBoundary) {
+          boundaries.push({ route: new URL(actualUrl).pathname || '/', reason: routeBoundary });
+          continue;
+        }
         const title = clean(await page.title());
         const visible = clean((await page.locator('body').innerText({ timeout: 4000 }).catch(()=>'' )).slice(0,12000));
         const boundary = classifyPageBoundary(title, visible);
         if (boundary) {
-          boundaries.push({ route: u.pathname || '/', reason: boundary });
+          boundaries.push({ route: new URL(actualUrl).pathname || '/', reason: boundary });
           continue;
         }
         const controls = await page.locator('a[href],button,input,[role="button"],[role="link"],[role="searchbox"]').evaluateAll(els => els.slice(0,350).map((el,i) => ({
@@ -101,7 +109,6 @@ try {
           i
         })));
         const labels = controls.map(c => clean(c.label)).filter(Boolean);
-        const actualUrl = page.url();
         const type = pageType(actualUrl, title, labels);
         addCapabilities(capabilities, type, controls, actualUrl);
         const id = `n${nodes.length + 1}`;

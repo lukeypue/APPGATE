@@ -37,11 +37,22 @@ object SafeActionExecutor {
                 (function(){
                   var el=document.querySelector(${jsString(selector)});
                   if(!el) return 'MISSING';
+                  if(el.disabled || el.getAttribute('aria-disabled')==='true') return 'DISABLED';
                   el.focus();
                   el.value=${jsString(value)};
                   el.dispatchEvent(new Event('input',{bubbles:true}));
                   el.dispatchEvent(new Event('change',{bubbles:true}));
-                  return 'FILLED';
+                  var form=el.form || (el.closest ? el.closest('form') : null);
+                  if(form){
+                    if(typeof form.requestSubmit==='function'){ form.requestSubmit(); return 'SUBMITTED'; }
+                    form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+                    if(typeof form.submit==='function') form.submit();
+                    return 'SUBMITTED';
+                  }
+                  var kd=new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true});
+                  var ku=new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true});
+                  el.dispatchEvent(kd); el.dispatchEvent(ku);
+                  return 'ENTER';
                 })();
             """.trimIndent()
         }

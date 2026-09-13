@@ -31,6 +31,13 @@ class SearchIntentTest {
     }
 
     @Test
+    fun removesDanglingAndFromDeepRequirementAfterOtherConstraintIsRemoved() {
+        val parsed = SearchIntentParser.parse("Ford expedition under 8k with a 3.73 axle and under 150k miles")
+        assertEquals(listOf("3.73 axle"), parsed.requiredTerms)
+        assertEquals(150000, parsed.maxMileage)
+    }
+
+    @Test
     fun rejectsSummaryAboveHardPriceCeiling() {
         val parsed = SearchIntentParser.parse("expedition under 8k")
         assertTrue(SearchMatcher.summaryCouldMatch("2003 Ford Expedition Eddie Bauer 149,000 Miles $4,995", parsed))

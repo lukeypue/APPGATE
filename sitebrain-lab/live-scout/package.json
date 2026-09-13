@@ -1,0 +1,12 @@
+{
+  "name": "sitebrain-live-scout",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test scout-policy.test.mjs",
+    "scout": "node public-scout.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.55.0"
+  }
+}

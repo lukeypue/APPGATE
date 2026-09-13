@@ -23,7 +23,9 @@ data class SearchWave(
 
 object CentralSearchBrain {
     fun plan(parsed: ParsedSearch, siteBrains: List<SiteBrainState>): List<SearchWave> {
-        val queryTerms = (parsed.conceptTerms + parsed.discoveredVocabulary + parsed.optionalTerms.flatMap(::tokens)).map(String::lowercase).toSet()
+        val queryTerms = (parsed.conceptTerms + parsed.discoveredVocabulary + parsed.optionalTerms.flatMap(::tokens))
+            .map { it.lowercase() }
+            .toSet()
         val wave1 = mutableListOf<SearchPath>()
         val wave2 = mutableListOf<SearchPath>()
         val wave3 = mutableListOf<SearchPath>()

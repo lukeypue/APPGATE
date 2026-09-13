@@ -14,7 +14,7 @@ data class ParsedSearch(
 object SearchIntentParser {
     private val mileageRegex = Regex("""(?i)\b(?:under|below|less\s+than|max(?:imum)?|up\s+to)\s*([\d,.]+)\s*([kK]?)\s*(?:miles?|mi)\b""")
     private val deepRegex = Regex("""(?i)\b(?:with|must\s+have|including)\s+(?:a\s+|an\s+)?(.+?)\s*$""")
-    private val priceRegex = Regex("""(?i)\b(?:under|below|less\s+than|max(?:imum)?(?:\s+price)?|up\s+to)\s*\$?\s*([\d,.]+)\s*([kK]?)\b""")
+    private val priceRegex = Regex("""(?i)\b(?:under|below|less\s+than|max(?:imum)?(?:\s+price)?|up\s+to)\s*\$?\s*([\d,.]+)\s*([kK]?)\s*(?:dollars?|bucks?)?\b""")
 
     fun parse(input: String): ParsedSearch {
         val raw = input.trim()
@@ -30,6 +30,10 @@ object SearchIntentParser {
         working = priceRegex.replace(working, " ")
 
         val core = working
+            .replace(Regex("""(?i)^\s*(?:please\s+)?(?:find|search\s+for|look\s+for|show\s+me)\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?"""), "")
+            .replace(Regex("""(?i)\b(?:and|for)\s+(?:dollars?|bucks?)\b"""), " ")
+            .replace(Regex("""(?i)\b(?:dollars?|bucks?)\b"""), " ")
+            .replace(Regex("""(?i)\s+and\s*$"""), " ")
             .replace(Regex("""\s+"""), " ")
             .trim(' ', ',', ';', '-')
             .ifBlank { raw }
@@ -53,7 +57,7 @@ object SearchMatcher {
     private val moneyRegex = Regex("""\$\s*([\d,]+(?:\.\d{1,2})?)""")
     private val milesRegex = Regex("""(?i)([\d,]+)\s*(?:miles?|mi)\b""")
     private val tokenRegex = Regex("""[a-z0-9]+(?:\.[0-9]+)?""")
-    private val stopWords = setOf("a", "an", "the", "with", "and", "or", "for", "of", "to")
+    private val stopWords = setOf("a", "an", "the", "with", "and", "or", "for", "of", "to", "find", "search", "show", "me")
 
     fun summaryCouldMatch(summary: String, parsed: ParsedSearch): Boolean {
         val lower = summary.lowercase()
@@ -66,12 +70,14 @@ object SearchMatcher {
                 if (after.contains("/mo") || after.contains("/month") || after.contains("per mo")) null
                 else match.groupValues[1].replace(",", "").toDoubleOrNull()?.toInt()
             }.toList()
-            if (prices.isNotEmpty() && prices.minOrNull()!! > ceiling) return false
+            if (prices.isEmpty()) return false
+            if (prices.minOrNull()!! > ceiling) return false
         }
 
         parsed.maxMileage?.let { ceiling ->
             val miles = milesRegex.find(summary)?.groupValues?.getOrNull(1)?.replace(",", "")?.toIntOrNull()
-            if (miles != null && miles > ceiling) return false
+            if (miles == null) return false
+            if (miles > ceiling) return false
         }
         return true
     }
@@ -89,14 +95,19 @@ object SearchMatcher {
 }
 
 object SearchUrlBuilder {
+    private val vehicleMakes = listOf(
+        "Acura", "Audi", "BMW", "Buick", "Cadillac", "Chevrolet", "Chevy", "Chrysler", "Dodge",
+        "Ford", "GMC", "Honda", "Hyundai", "Infiniti", "Jeep", "Kia", "Land Rover", "Lexus",
+        "Lincoln", "Mazda", "Mercedes-Benz", "Mitsubishi", "Nissan", "Porsche", "Ram", "Subaru",
+        "Tesla", "Toyota", "Volkswagen", "Volvo"
+    )
+
     fun build(sourceKey: String, template: String, parsed: ParsedSearch): String {
-        val encoded = URLEncoder.encode(parsed.coreQuery, StandardCharsets.UTF_8.name()).replace("+", "%20")
+        if (sourceKey == "ksl_cars") return buildKslCars(parsed)
+
+        val encoded = encode(parsed.coreQuery)
         var url = template.replace("{q}", encoded)
         when (sourceKey) {
-            "ksl_cars" -> {
-                parsed.maxPrice?.let { url += "/priceFrom/0/priceTo/$it" }
-                parsed.maxMileage?.let { url += "/mileageFrom/0/mileageTo/$it" }
-            }
             "ebay" -> parsed.maxPrice?.let { url += "&_udhi=$it" }
             "craigslist" -> parsed.maxPrice?.let { url += "&max_price=$it" }
             "facebook_marketplace" -> parsed.maxPrice?.let { url += "&maxPrice=$it" }
@@ -105,4 +116,25 @@ object SearchUrlBuilder {
         }
         return url
     }
+
+    private fun buildKslCars(parsed: ParsedSearch): String {
+        val query = parsed.coreQuery.trim()
+        val make = vehicleMakes.firstOrNull { query.startsWith(it, ignoreCase = true) }
+        var url = if (make != null) {
+            val model = query.substring(make.length).trim().trim(',', '-', ' ')
+            if (model.isNotBlank()) {
+                "https://cars.ksl.com/search/make/${encodePath(make)}/model/${encodePath(model)}"
+            } else {
+                "https://cars.ksl.com/search/make/${encodePath(make)}"
+            }
+        } else {
+            "https://cars.ksl.com/search/keyword/${encodePath(query)}"
+        }
+        parsed.maxPrice?.let { url += "/priceFrom/0/priceTo/$it" }
+        parsed.maxMileage?.let { url += "/mileageFrom/0/mileageTo/$it" }
+        return url
+    }
+
+    private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
+    private fun encodePath(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%2B")
 }

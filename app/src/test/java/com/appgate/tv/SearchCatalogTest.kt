@@ -8,7 +8,7 @@ class SearchCatalogTest {
     fun vehicleSearchHasBroadMajorSourceCoverage() {
         val vehicles = SearchCatalog.all().filter { "vehicles" in it.categories }
         val keys = vehicles.map { it.key }.toSet()
-        assertTrue(vehicles.size >= 12)
+        assertTrue(vehicles.size >= 17)
         assertTrue("ksl_cars" in keys)
         assertTrue("facebook_marketplace" in keys)
         assertTrue("craigslist" in keys)
@@ -17,6 +17,11 @@ class SearchCatalogTest {
         assertTrue("cars_com" in keys)
         assertTrue("carmax" in keys)
         assertTrue("offerup" in keys)
+        assertTrue("carfax" in keys)
+        assertTrue("carvana" in keys)
+        assertTrue("kbb" in keys)
+        assertTrue("carsforsale" in keys)
+        assertTrue("privateauto" in keys)
     }
 
     @Test

@@ -38,6 +38,26 @@ export function scoreDiscoveryLink(label = '', href = '') {
   return score;
 }
 
+export function isSafeSearchControl(control = {}) {
+  const tag = String(control.tag || '').toLowerCase();
+  const type = String(control.type || '').toLowerCase();
+  const role = String(control.role || '').toLowerCase();
+  const descriptor = `${control.label || ''} ${control.name || ''}`.toLowerCase();
+  if (tag !== 'input') return false;
+  if (['password','email','tel','number','date','file','checkbox','radio','submit'].includes(type)) return false;
+  if (/password|email|phone|message|contact|address|payment|card/.test(descriptor)) return false;
+  return type === 'search' || role === 'searchbox' || /\bsearch\b/.test(descriptor);
+}
+
+export function searchProbeForSite(key = '') {
+  if (['ksl_cars','ebay','autotrader','cars_com','cargurus','edmunds','truecar','carmax'].includes(key)) {
+    return 'Ford Expedition';
+  }
+  if (key === 'craigslist') return 'car';
+  if (['offerup','facebook_marketplace'].includes(key)) return 'bicycle';
+  return 'test';
+}
+
 export function calculatePublicCoverage({ nodes, verifiedTransitions, boundaries, capabilities }) {
   const unique = new Set(capabilities || []);
   if (nodes <= 0 || verifiedTransitions <= 0 || unique.size === 0) return 0;

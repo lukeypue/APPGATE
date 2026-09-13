@@ -92,26 +92,31 @@ object SearchMatcher {
         val lower = summary.lowercase()
         val coreTokens = tokens(parsed.coreQuery).filterNot { it in stopWords || it.length < 2 }
         if (coreTokens.isNotEmpty() && !coreTokens.all { lower.contains(it) }) return false
+        val mayDeepCheckMissingEvidence = parsed.requiredTerms.isNotEmpty()
 
         parsed.maxPrice?.let { ceiling ->
-            val prices = moneyRegex.findAll(summary).mapNotNull { match ->
-                val after = summary.substring(match.range.last + 1, minOf(summary.length, match.range.last + 16)).lowercase()
-                if (after.contains("/mo") || after.contains("/month") || after.contains("per mo")) null
-                else match.groupValues[1].replace(",", "").toDoubleOrNull()?.toInt()
-            }.toList()
-            if (prices.isEmpty()) return false
-            if (prices.minOrNull()!! > ceiling) return false
+            val prices = pricesIn(summary)
+            if (prices.isEmpty() && !mayDeepCheckMissingEvidence) return false
+            if (prices.isNotEmpty() && prices.minOrNull()!! > ceiling) return false
         }
 
         parsed.maxMileage?.let { ceiling ->
-            val miles = milesRegex.find(summary)?.groupValues?.getOrNull(1)?.replace(",", "")?.toIntOrNull()
-            if (miles == null) return false
-            if (miles > ceiling) return false
+            val miles = mileageIn(summary)
+            if (miles == null && !mayDeepCheckMissingEvidence) return false
+            if (miles != null && miles > ceiling) return false
         }
         return true
     }
 
     fun deepTextMatches(text: String, parsed: ParsedSearch): Boolean {
+        parsed.maxPrice?.let { ceiling ->
+            val prices = pricesIn(text)
+            if (prices.isEmpty() || prices.minOrNull()!! > ceiling) return false
+        }
+        parsed.maxMileage?.let { ceiling ->
+            val miles = mileageIn(text) ?: return false
+            if (miles > ceiling) return false
+        }
         if (parsed.requiredTerms.isEmpty()) return true
         val haystack = tokens(text).toSet()
         return parsed.requiredTerms.all { term ->
@@ -119,6 +124,14 @@ object SearchMatcher {
             needed.isNotEmpty() && needed.all { it in haystack }
         }
     }
+
+    private fun pricesIn(text: String): List<Int> = moneyRegex.findAll(text).mapNotNull { match ->
+        val after = text.substring(match.range.last + 1, minOf(text.length, match.range.last + 16)).lowercase()
+        if (after.contains("/mo") || after.contains("/month") || after.contains("per mo")) null
+        else match.groupValues[1].replace(",", "").toDoubleOrNull()?.toInt()
+    }.toList()
+
+    private fun mileageIn(text: String): Int? = milesRegex.find(text)?.groupValues?.getOrNull(1)?.replace(",", "")?.toIntOrNull()
 
     private fun tokens(value: String): List<String> = tokenRegex.findAll(value.lowercase()).map { it.value }.toList()
 }

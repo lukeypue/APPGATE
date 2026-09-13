@@ -11,8 +11,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 10
-        versionName "5.0.0-site-brain-alpha"
+        versionCode 11
+        versionName "5.1.0-live-explorer-alpha"
     }
 
     buildTypes {

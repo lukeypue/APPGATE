@@ -4,7 +4,9 @@ import {
   classifyPageBoundary,
   classifyRouteBoundary,
   scoreDiscoveryLink,
-  calculatePublicCoverage
+  calculatePublicCoverage,
+  isSafeSearchControl,
+  searchProbeForSite
 } from './scout-policy.mjs';
 
 test('access-denied and challenge pages are protected boundaries', () => {
@@ -34,6 +36,21 @@ test('marketplace discovery favors search structure over legal and editorial lin
   assert.ok(login <= 0);
   assert.ok(prohibited <= 0);
   assert.ok(research <= 0);
+});
+
+test('only real search controls may be submitted by the scout', () => {
+  assert.equal(isSafeSearchControl({ tag: 'input', type: 'search', role: '', label: 'Search cars', name: 'q' }), true);
+  assert.equal(isSafeSearchControl({ tag: 'input', type: 'text', role: 'searchbox', label: 'Search', name: 'query' }), true);
+  assert.equal(isSafeSearchControl({ tag: 'input', type: 'password', role: '', label: 'Password', name: 'password' }), false);
+  assert.equal(isSafeSearchControl({ tag: 'input', type: 'email', role: '', label: 'Email', name: 'email' }), false);
+  assert.equal(isSafeSearchControl({ tag: 'textarea', type: '', role: '', label: 'Message seller', name: 'message' }), false);
+});
+
+test('probe queries are benign and site appropriate', () => {
+  assert.equal(searchProbeForSite('carmax'), 'Ford Expedition');
+  assert.equal(searchProbeForSite('cargurus'), 'Ford Expedition');
+  assert.equal(searchProbeForSite('offerup'), 'bicycle');
+  assert.equal(searchProbeForSite('craigslist'), 'car');
 });
 
 test('blocked or empty sites cannot report one hundred percent learned', () => {

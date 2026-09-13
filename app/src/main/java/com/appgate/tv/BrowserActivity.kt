@@ -3,14 +3,17 @@ package com.appgate.tv
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -20,9 +23,14 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.appgate.tv.sitebrain.ContinuousLearningSession
 import com.appgate.tv.sitebrain.ExplorerBudget
+import com.appgate.tv.sitebrain.LearningEvent
+import com.appgate.tv.sitebrain.LearningReportWriter
 import com.appgate.tv.sitebrain.SharedPreferencesSiteBrainStore
 import com.appgate.tv.sitebrain.SiteBrainRepository
+import com.appgate.tv.sitebrain.WebNavigationDecision
+import com.appgate.tv.sitebrain.WebNavigationPolicy
 import com.appgate.tv.sitebrain.WebViewSiteBrainController
 import org.json.JSONArray
 import org.json.JSONTokener
@@ -49,6 +57,12 @@ class BrowserActivity : AppCompatActivity() {
     private var mode = ScanMode.SOURCES
     private var explorationInProgress = false
     private var explorationVerificationScheduled = false
+    private var explorationCoverageBefore = 0.0
+    private var explorationActionLabel = ""
+    private var learningSession: ContinuousLearningSession? = null
+    private var learningStartedAtMs = 0L
+    private var learningRootFingerprint: String? = null
+    private var learningBacktracks = 0
     private lateinit var parsed: ParsedSearch
 
     private val candidates = LinkedHashMap<String, CandidateResult>()
@@ -56,7 +70,7 @@ class BrowserActivity : AppCompatActivity() {
     private val failures = mutableListOf<String>()
     private val sourceCounts = linkedMapOf<String, Int>()
     private val siteBrainStatuses = linkedMapOf<String, String>()
-    private val exploredSources = mutableSetOf<Int>()
+    private val learningEvents = mutableListOf<LearningEvent>()
     private var deepQueue = listOf<CandidateResult>()
     private var deepIndex = 0
 
@@ -136,6 +150,17 @@ class BrowserActivity : AppCompatActivity() {
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    if (request == null || !request.isForMainFrame) return false
+                    return handleWebNavigation(view, request.url.toString())
+                }
+
+                @Suppress("DEPRECATION")
+                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                    if (url.isNullOrBlank()) return false
+                    return handleWebNavigation(view, url)
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     if (rememberSignIns) CookieManager.getInstance().flush()
@@ -150,7 +175,7 @@ class BrowserActivity : AppCompatActivity() {
                     }, 1100L)
                 }
 
-                override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true && mode == ScanMode.SOURCES) {
                         failures.add("${currentName()}: page error")
@@ -164,6 +189,39 @@ class BrowserActivity : AppCompatActivity() {
         if (urls.isEmpty()) showCombinedResults() else loadCurrentSource()
     }
 
+    private fun handleWebNavigation(view: WebView?, rawUrl: String): Boolean {
+        val currentHost = runCatching { Uri.parse(view?.url.orEmpty()).host }.getOrNull()
+        val decision = WebNavigationPolicy.decide(rawUrl, currentHost)
+        return when (decision.kind) {
+            WebNavigationDecision.KEEP_IN_WEBVIEW,
+            WebNavigationDecision.LOAD_WEB_FALLBACK -> {
+                val safeUrl = decision.url
+                if (safeUrl.isNullOrBlank()) true else {
+                    view?.loadUrl(safeUrl)
+                    true
+                }
+            }
+            else -> {
+                if (!stopped && mode == ScanMode.SOURCES) {
+                    failures.add("${currentName()}: blocked external app handoff")
+                    learningEvents += LearningEvent(
+                        timestamp = System.currentTimeMillis(),
+                        source = currentName(),
+                        host = currentHost.orEmpty(),
+                        pageType = "NAVIGATION",
+                        route = Uri.parse(view?.url.orEmpty()).path.orEmpty(),
+                        action = "BLOCK_EXTERNAL_APP",
+                        outcome = "BLOCKED",
+                        coverageBefore = explorationCoverageBefore,
+                        coverageAfter = explorationCoverageBefore,
+                        note = "App-only navigation kept inside AI Browser"
+                    )
+                }
+                true
+            }
+        }
+    }
+
     private fun loadCurrentSource() {
         if (stopped) return
         if (index >= urls.size) {
@@ -174,6 +232,10 @@ class BrowserActivity : AppCompatActivity() {
         waitingForHuman = false
         explorationInProgress = false
         explorationVerificationScheduled = false
+        learningSession = ContinuousLearningSession.forSource(currentKey())
+        learningStartedAtMs = SystemClock.elapsedRealtime()
+        learningRootFingerprint = null
+        learningBacktracks = 0
         resumeButton.isEnabled = false
         progress.max = names.size.coerceAtLeast(1)
         progress.progress = index
@@ -316,42 +378,69 @@ class BrowserActivity : AppCompatActivity() {
 
     private fun exploreCurrentSourceThenAdvance() {
         if (stopped || mode != ScanMode.SOURCES || index !in urls.indices) return
-        if (index in exploredSources) {
-            nextSource()
-            return
+        val session = learningSession ?: ContinuousLearningSession.forSource(currentKey()).also {
+            learningSession = it
+            learningStartedAtMs = SystemClock.elapsedRealtime()
         }
-        exploredSources += index
         siteBrainController.observe(webView) { result ->
             result.onFailure {
                 failures.add("${currentName()}: Site Brain exploration snapshot failed")
                 nextSource()
             }.onSuccess { observation ->
-                val priority = currentKey() in setOf("ksl_cars", "facebook_marketplace", "ebay")
-                val budget = ExplorerBudget(
-                    maxPages = if (priority) 12 else 6,
-                    maxActions = 1,
-                    maxRevisitsPerFingerprint = 2,
-                    maxElapsedMs = if (priority) 20_000L else 12_000L,
-                    pagesSeen = observation.brain.nodes.size,
-                    actionsTaken = 0
-                )
-                val prepared = siteBrainController.prepareExploration(observation, budget, parsed.coreQuery)
-                if (prepared == null) {
+                if (learningRootFingerprint == null) learningRootFingerprint = observation.snapshot.fingerprint
+                val elapsed = SystemClock.elapsedRealtime() - learningStartedAtMs
+                if (!session.shouldContinue(observation.brain.coverageScore, elapsed)) {
                     siteBrainStatuses[observation.snapshot.host] = siteBrainController.statusLine(observation)
                     nextSource()
                     return@onSuccess
                 }
+
+                val policy = session.policy
+                val budget = ExplorerBudget(
+                    maxPages = 120,
+                    maxActions = policy.maxActions,
+                    maxRevisitsPerFingerprint = 2,
+                    maxElapsedMs = policy.maxElapsedMs,
+                    pagesSeen = observation.brain.nodes.size,
+                    actionsTaken = session.actionsTaken
+                )
+                val prepared = siteBrainController.prepareExploration(observation, budget, parsed.coreQuery)
+                if (prepared == null) {
+                    siteBrainStatuses[observation.snapshot.host] = siteBrainController.statusLine(observation)
+                    val awayFromRoot = observation.snapshot.fingerprint != learningRootFingerprint
+                    if (awayFromRoot && learningBacktracks < policy.maxBacktracks) {
+                        learningBacktracks++
+                        status.text = "Learning ${currentName()}: returning to the main search path to explore another safe branch"
+                        handler.postDelayed({ webView.loadUrl(urls[index]) }, 700L)
+                    } else {
+                        nextSource()
+                    }
+                    return@onSuccess
+                }
+
                 explorationInProgress = true
                 explorationVerificationScheduled = false
-                status.text = "Learning ${currentName()}: testing a safe path\n${prepared.semanticIntent}"
+                explorationCoverageBefore = observation.brain.coverageScore
+                explorationActionLabel = prepared.semanticIntent
+                status.text = "Learning ${currentName()}: safe action ${session.actionsTaken + 1} of ${policy.maxActions}\n${prepared.semanticIntent}"
                 siteBrainController.executePrepared(webView, prepared) { accepted ->
                     if (!accepted) {
                         explorationInProgress = false
                         failures.add("${currentName()}: safe path could not be activated")
-                        nextSource()
+                        learningEvents += LearningEvent(
+                            timestamp = System.currentTimeMillis(),
+                            source = currentName(),
+                            host = observation.snapshot.host,
+                            pageType = observation.snapshot.pageType.name,
+                            route = observation.snapshot.routeSignature,
+                            action = prepared.semanticIntent,
+                            outcome = "NOT_ACTIVATED",
+                            coverageBefore = observation.brain.coverageScore,
+                            coverageAfter = observation.brain.coverageScore
+                        )
+                        handler.postDelayed({ exploreCurrentSourceThenAdvance() }, 750L)
                     } else {
-                        // Navigation actions verify as soon as onPageFinished fires. For controls
-                        // that update the DOM without navigation, this is the conservative fallback.
+                        session.recordAction()
                         handler.postDelayed({ scheduleExplorationVerification(0L) }, 4500L)
                     }
                 }
@@ -367,18 +456,58 @@ class BrowserActivity : AppCompatActivity() {
             siteBrainController.verifyPending(webView) { result ->
                 explorationVerificationScheduled = false
                 explorationInProgress = false
+                var coverageAfter = explorationCoverageBefore
+                var protectedBoundary = false
                 result.onSuccess { verified ->
+                    coverageAfter = verified.brain.coverageScore
                     val percent = (verified.brain.coverageScore * 100).toInt().coerceIn(0, 100)
                     val readiness = verified.brain.readiness.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
                     siteBrainStatuses[verified.after.host] = "Site Brain: $readiness · $percent% mapped · ${verified.brain.edges.count { it.successCount > 0 }} verified paths"
+                    learningEvents += LearningEvent(
+                        timestamp = System.currentTimeMillis(),
+                        source = currentName(),
+                        host = verified.after.host,
+                        pageType = verified.after.pageType.name,
+                        route = verified.after.routeSignature,
+                        action = explorationActionLabel,
+                        outcome = if (verified.verification.success) "VERIFIED" else "NOT_VERIFIED",
+                        coverageBefore = explorationCoverageBefore,
+                        coverageAfter = verified.brain.coverageScore,
+                        note = verified.verification.evidence.firstOrNull().orEmpty()
+                    )
                     if (!verified.verification.success) {
                         val reason = verified.verification.evidence.firstOrNull().orEmpty()
                         failures.add("${currentName()}: explored path not verified${if (reason.isBlank()) "" else " ($reason)"}")
                     }
+                    protectedBoundary = verified.after.challengeDetected || verified.after.loginDetected
+                    if (protectedBoundary) {
+                        waitingForHuman = true
+                        resumeButton.isEnabled = true
+                        status.text = "${currentName()}: sign-in or human verification boundary reached. Site Brain paused safely. Complete it yourself if you want this site included, then tap Resume."
+                    }
                 }.onFailure {
                     failures.add("${currentName()}: could not verify explored path")
+                    learningEvents += LearningEvent(
+                        timestamp = System.currentTimeMillis(),
+                        source = currentName(),
+                        host = Uri.parse(webView.url.orEmpty()).host.orEmpty(),
+                        pageType = "UNKNOWN",
+                        route = Uri.parse(webView.url.orEmpty()).path.orEmpty(),
+                        action = explorationActionLabel,
+                        outcome = "VERIFY_ERROR",
+                        coverageBefore = explorationCoverageBefore,
+                        coverageAfter = explorationCoverageBefore
+                    )
                 }
-                nextSource()
+
+                if (protectedBoundary || waitingForHuman) return@verifyPending
+                val session = learningSession
+                val elapsed = SystemClock.elapsedRealtime() - learningStartedAtMs
+                if (session != null && session.shouldContinue(coverageAfter, elapsed)) {
+                    handler.postDelayed({ exploreCurrentSourceThenAdvance() }, 900L)
+                } else {
+                    nextSource()
+                }
             }
         }, delayMs)
     }
@@ -408,6 +537,9 @@ class BrowserActivity : AppCompatActivity() {
         if (stopped) return
         explorationInProgress = false
         explorationVerificationScheduled = false
+        learningSession = null
+        learningRootFingerprint = null
+        learningBacktracks = 0
         index++
         loadCurrentSource()
     }
@@ -505,6 +637,19 @@ class BrowserActivity : AppCompatActivity() {
             failures.distinct().take(30).forEach { list.addView(label("• $it", 14f, Color.rgb(235, 175, 145), false)) }
         }
 
+        if (learningEvents.isNotEmpty()) {
+            list.addView(Button(this).apply {
+                text = "Share Learning Data"
+                setOnClickListener {
+                    val report = LearningReportWriter.encode(learningEvents)
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "application/json"
+                        putExtra(Intent.EXTRA_SUBJECT, "AI Browser Site Brain Learning Data")
+                        putExtra(Intent.EXTRA_TEXT, report)
+                    }, "Share Site Brain learning data"))
+                }
+            })
+        }
         list.addView(Button(this).apply { text = "New Search"; setOnClickListener { finish() } })
         root.addView(list)
         setContentView(root)

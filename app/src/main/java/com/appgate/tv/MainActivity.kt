@@ -3,40 +3,26 @@ package com.appgate.tv
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-
-data class SearchSource(val name: String, val key: String, val categories: Set<String>, val template: String, val loginCommon: Boolean = false)
 
 class MainActivity : AppCompatActivity() {
     private lateinit var queryBox: EditText
     private lateinit var sourceSummary: TextView
-
-    private val sources = listOf(
-        SearchSource("KSL Classifieds", "ksl_classifieds", setOf("shopping", "local", "general"), "https://classifieds.ksl.com/search/keyword/{q}"),
-        SearchSource("KSL Cars", "ksl_cars", setOf("vehicles"), "https://cars.ksl.com/search/keyword/{q}"),
-        SearchSource("Facebook Marketplace", "facebook_marketplace", setOf("shopping", "vehicles", "local"), "https://www.facebook.com/marketplace/search/?query={q}", true),
-        SearchSource("eBay", "ebay", setOf("shopping", "vehicles", "general"), "https://www.ebay.com/sch/i.html?_nkw={q}"),
-        SearchSource("Craigslist", "craigslist", setOf("shopping", "vehicles", "local", "jobs", "realestate"), "https://www.craigslist.org/search/sss?query={q}"),
-        SearchSource("Best Buy", "bestbuy", setOf("shopping"), "https://www.bestbuy.com/site/searchpage.jsp?id=pcat17071&st={q}"),
-        SearchSource("Walmart", "walmart", setOf("shopping"), "https://www.walmart.com/search?q={q}"),
-        SearchSource("Google", "google", setOf("web"), "https://www.google.com/search?q={q}"),
-        SearchSource("Bing", "bing", setOf("web"), "https://www.bing.com/search?q={q}")
-    )
+    private lateinit var rememberSignIns: CheckBox
+    private val sources = SearchCatalog.all()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v4"
+        title = "AI Browser v4.1"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -45,10 +31,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Search once. AI Browser searches marketplaces, specialty sites and the web for you.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
+        column.addView(text("Search once. AI Browser searches marketplaces, specialty sites and the web — then checks results against what you actually asked for.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
 
         queryBox = EditText(this).apply {
-            hint = "Try: gaming computer under $800"
+            hint = "Try: expedition under 8k with a 3.73 axle"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(130, 145, 165))
             setSingleLine(false)
@@ -59,11 +45,22 @@ class MainActivity : AppCompatActivity() {
         column.addView(queryBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val searchButton = Button(this).apply {
-            text = "Search All + Combine"
+            text = "Deep Search + Combine"
             textSize = 17f
             setOnClickListener { startSearch() }
         }
         column.addView(searchButton)
+
+        rememberSignIns = CheckBox(this).apply {
+            text = "Remember site sign-ins on this device"
+            setTextColor(Color.WHITE)
+            isChecked = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("remember_signins", true)
+            setOnCheckedChangeListener { _, checked ->
+                getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("remember_signins", checked).apply()
+            }
+        }
+        column.addView(rememberSignIns)
+        column.addView(text("Recommended: ON. AI Browser does not save your password; the website's normal WebView cookies keep you signed in. Security checks are still completed by you.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 12) })
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(Button(this).apply {
@@ -81,8 +78,8 @@ class MainActivity : AppCompatActivity() {
         column.addView(sourceSummary)
         refreshSummary()
 
-        column.addView(text("First AI-ready sources", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("KSL Classifieds • KSL Cars • Facebook Marketplace • eBay • Craigslist • Best Buy • Walmart • Google • Bing\n\nSites may require login or human verification. AI Browser pauses that source, lets you complete the check, then continues. Other sources keep working.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("Vehicle sources in this test", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("KSL Cars • Facebook Marketplace • Craigslist • eBay • OfferUp • AutoTrader • Cars.com • CarMax • TrueCar • CarGurus • Edmunds • Autolist • Hemmings • Cars & Bids • Bring a Trailer • Google • Bing\n\nWhen you add a hard limit such as 'under 8k', AI Browser filters the site where possible AND rejects cards above that price. A phrase after 'with' or 'must have' becomes a deep-description requirement, so the browser can open promising listings and look for details such as axle ratio.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)
@@ -94,17 +91,21 @@ class MainActivity : AppCompatActivity() {
             queryBox.error = "Tell AI Browser what you want to find"
             return
         }
+        val parsed = SearchIntentParser.parse(raw)
         val selected = route(raw)
         val names = ArrayList<String>()
+        val keys = ArrayList<String>()
         val urls = ArrayList<String>()
         for (s in selected) {
             names.add(s.name)
-            val encoded = URLEncoder.encode(raw, StandardCharsets.UTF_8.name()).replace("+", "%20")
-            urls.add(s.template.replace("{q}", encoded))
+            keys.add(s.key)
+            urls.add(SearchUrlBuilder.build(s.key, s.template, parsed))
         }
         startActivity(Intent(this, BrowserActivity::class.java).apply {
             putExtra("query", raw)
+            putExtra("rememberSignIns", rememberSignIns.isChecked)
             putStringArrayListExtra("sourceNames", names)
+            putStringArrayListExtra("sourceKeys", keys)
             putStringArrayListExtra("sourceUrls", urls)
         })
     }
@@ -112,7 +113,7 @@ class MainActivity : AppCompatActivity() {
     private fun route(query: String): List<SearchSource> {
         val q = query.lowercase()
         val category = when {
-            listOf("car", "truck", "suv", "vehicle", "ford", "toyota", "honda", "chevy", "expedition", "tacoma").any { q.contains(it) } -> "vehicles"
+            listOf("car", "truck", "suv", "vehicle", "ford", "toyota", "honda", "chevy", "expedition", "tacoma", "axle", "mileage").any { q.contains(it) } -> "vehicles"
             listOf("job", "hiring", "career", "work from home").any { q.contains(it) } -> "jobs"
             listOf("house", "apartment", "rent", "real estate", "home for sale").any { q.contains(it) } -> "realestate"
             else -> "shopping"
@@ -131,7 +132,7 @@ class MainActivity : AppCompatActivity() {
         val checked = BooleanArray(sources.size) { i -> prefs.getBoolean("always_${sources[i].key}", false) }
         AlertDialog.Builder(this)
             .setTitle("Always Search These Sources")
-            .setMessage("Turn on any site you want included in every search, no matter where you live or what category AI Browser detects.")
+            .setMessage("Turn on any site you want included in every search. This is useful for regional sites like KSL even when you are outside Utah.")
             .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
             .setPositiveButton("Save") { _, _ ->
                 val e = prefs.edit()
@@ -152,7 +153,7 @@ class MainActivity : AppCompatActivity() {
     private fun showInfo() {
         AlertDialog.Builder(this)
             .setTitle("How AI Browser Works")
-            .setMessage("1. Search once.\n\n2. AI Browser decides what kind of search it is and chooses useful sites automatically.\n\n3. It visits those sites, reads public result links, and combines what it can find.\n\n4. Some sites need you to sign in once. Cookies stay in the browser so the session can remain available.\n\n5. If a site shows CAPTCHA or another security check, AI Browser pauses for you. It does not defeat the security check. After you finish, tap Resume and it continues.\n\n6. Websites change. Failed sources are shown clearly so future versions can repair their site skill.\n\n7. Use My Sources to force a favorite site, such as KSL, into every search even outside its normal region/category.")
+            .setMessage("1. Search once. AI Browser chooses useful marketplaces and specialty sites automatically.\n\n2. Hard limits such as price and mileage are sent to a site's filters when we know how, then checked again by AI Browser before a result is shown.\n\n3. Details that usually live only inside a listing — for example '3.73 axle', 'no rust', or a specific option — trigger Deep Search. AI Browser opens promising listings and reads the public description before keeping the match.\n\n4. Some sites, especially Facebook Marketplace, need you to sign in. With Remember Sign-ins ON, the site's normal WebView cookies are kept on this device so you normally sign in once. AI Browser never records your password in its logs.\n\n5. CAPTCHA/security checks stay human. AI Browser pauses, you finish the check, then tap Resume.\n\n6. Websites change. A source that cannot be read is shown separately instead of polluting the results.\n\n7. My Sources lets you force a favorite regional site such as KSL into every relevant search.")
             .setPositiveButton("Got it", null)
             .show()
     }

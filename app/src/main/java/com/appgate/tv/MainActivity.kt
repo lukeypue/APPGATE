@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v5.1 Live Explorer"
+        title = "AI Browser v6.1 Deep Search"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -31,10 +31,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Site Brain v5.1 — search once while AI Browser learns how websites are organized, safely tests useful paths, verifies what changed, and remembers what worked.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
+        column.addView(text("Site Brain v6.1 — search many websites, open promising listings, verify hard limits from full listing pages, and remember what each site taught us.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
 
         queryBox = EditText(this).apply {
-            hint = "Try: expedition under 8k with a 3.73 axle"
+            hint = "Try: Ford Expedition under 8k under 150k miles with a 3.73 axle"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(130, 145, 165))
             setSingleLine(false)
@@ -60,7 +60,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         column.addView(rememberSignIns)
-        column.addView(text("Recommended: ON. AI Browser does not save your password; the website's normal WebView cookies keep you signed in. Security checks are still completed by you.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 12) })
+        column.addView(text("Recommended: ON. AI Browser does not save your password; the website's normal WebView cookies keep you signed in. Security checks are still completed by you.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 10) })
+
+        column.addView(Button(this).apply {
+            text = "Connect Facebook Marketplace (1-time sign-in)"
+            setOnClickListener { openFacebookMarketplace() }
+        })
+        column.addView(text("Do this once before your first Marketplace search. Sign in to Facebook in the page that opens, then press Back to return here. With Remember sign-ins ON, the normal Facebook session stays on this device for later searches.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 0, 0, 14) })
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(Button(this).apply {
@@ -78,11 +84,11 @@ class MainActivity : AppCompatActivity() {
         column.addView(sourceSummary)
         refreshSummary()
 
-        column.addView(text("What is new in v5.1", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("• Site Brain now tests one bounded safe path after a source search instead of only observing the page.\n• It compares the page before and after the action and only promotes a path when a real state change is verified.\n• KSL Cars, Facebook Marketplace and eBay start with low-confidence semantic seed knowledge, then live exploration verifies what still works.\n• Buy, message, post, delete, checkout, payment and account-changing controls remain off-limits to automatic exploration.\n• CAPTCHA, login and security pages never count as successful learned paths.\n• Generic card scraping is labeled Possible Match; deep-read evidence is required before the app calls a result Verified.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("What is new in v6.1", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("• Price and mileage no longer have to be visible on a small result card. A plausible listing can be opened and verified from its full page.\n• Hard limits such as under $8,000 or under 150k miles now trigger full-listing verification even when you did not include a description phrase.\n• Facebook Marketplace has a dedicated one-time sign-in button so Facebook cannot silently disappear from a search just because its login wording changes.\n• Remember sign-ins keeps the website's normal session cookies on this device; AI Browser never stores your Facebook password itself.\n• CAPTCHA and account security checks remain human-only.\n• Site Brain still learns only read-only, safe website paths; buy, message, post, delete, checkout, payment and account-changing controls remain off-limits to automatic exploration.", 14f, Color.rgb(180, 195, 215)))
 
         column.addView(text("Vehicle sources in this test", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("KSL Cars • Facebook Marketplace • Craigslist • eBay • OfferUp • AutoTrader • Cars.com • CarMax • TrueCar • CarGurus • Edmunds • Autolist • Hemmings • Cars & Bids • Bring a Trailer • Google • Bing\n\nWhen you add a hard limit such as 'under 8k', AI Browser filters the site where possible AND rejects cards above that price. A phrase after 'with' or 'must have' becomes a deep-description requirement, so the browser can open promising listings and look for details such as axle ratio.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("KSL Cars • Facebook Marketplace • Craigslist • eBay • OfferUp • AutoTrader • Cars.com • CarMax • CARFAX • Carvana • Kelley Blue Book • CarsForSale.com • PrivateAuto • TrueCar • CarGurus • Edmunds • Autolist • Hemmings • Cars & Bids • Bring a Trailer • Google • Bing\n\nHard limits are applied to site filters when supported, rejected immediately when a card clearly violates them, and otherwise verified from the full listing page. Details after 'with' or 'must have' are also checked in the listing text.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)
@@ -110,6 +116,13 @@ class MainActivity : AppCompatActivity() {
             putStringArrayListExtra("sourceNames", names)
             putStringArrayListExtra("sourceKeys", keys)
             putStringArrayListExtra("sourceUrls", urls)
+        })
+    }
+
+    private fun openFacebookMarketplace() {
+        startActivity(Intent(this, ListingActivity::class.java).apply {
+            putExtra("url", "https://www.facebook.com/marketplace/")
+            putExtra("rememberSignIns", rememberSignIns.isChecked)
         })
     }
 
@@ -156,7 +169,7 @@ class MainActivity : AppCompatActivity() {
     private fun showInfo() {
         AlertDialog.Builder(this)
             .setTitle("How Site Brain Works")
-            .setMessage("1. Search once. AI Browser chooses useful marketplaces and specialty sites automatically.\n\n2. While each page is open, Site Brain records a privacy-safe semantic map: page type, headings, categories, search/filter controls, result links and navigation relationships.\n\n3. After reading the search page, v5.1 may test a bounded safe action such as a category, filter, pagination or read-only navigation path. It compares the page before and after and remembers the path only when the result is verified.\n\n4. Consequential controls such as Buy, Message, Post, Delete, Checkout, payment and account changes are never used during automatic exploration.\n\n5. Hard limits such as price and mileage are sent to a site's filters when we know how, then checked again before a result is shown.\n\n6. Details usually buried inside a listing — for example '3.73 axle', 'no rust', or a specific option — trigger Deep Search.\n\n7. Some sites, especially Facebook Marketplace, need you to sign in. With Remember Sign-ins ON, the site's normal WebView cookies stay on this device. Site Brain knowledge never stores your password or cookies.\n\n8. CAPTCHA/security checks stay human. Site Brain pauses at that boundary instead of trying to defeat it.")
+            .setMessage("1. Search once. AI Browser chooses useful marketplaces and specialty sites automatically.\n\n2. Before your first Marketplace search, use Connect Facebook Marketplace once and complete Facebook's normal login yourself.\n\n3. While each page is open, Site Brain records a privacy-safe semantic map: page type, headings, categories, search/filter controls, result links and navigation relationships.\n\n4. Hard limits such as price and mileage are sent to a site's filters when we know how. If a result card omits a hard field, AI Browser can open the full listing and verify it there instead of throwing the listing away.\n\n5. Details usually buried inside a listing — for example '3.73 axle', 'no rust', or a specific option — are also checked on the full listing page.\n\n6. Consequential controls such as Buy, Message, Post, Delete, Checkout, payment and account changes are never used during automatic exploration.\n\n7. With Remember Sign-ins ON, websites keep their normal WebView cookies on this device. Site Brain knowledge never stores your password or cookies.\n\n8. CAPTCHA/security checks stay human. Site Brain pauses at that boundary instead of trying to defeat it.")
             .setPositiveButton("Got it", null)
             .show()
     }

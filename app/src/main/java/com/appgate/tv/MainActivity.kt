@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v4.1"
+        title = "AI Browser v5 Site Brain"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Search once. AI Browser searches marketplaces, specialty sites and the web — then checks results against what you actually asked for.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
+        column.addView(text("Site Brain v5 alpha — search once while AI Browser learns how each website is organized, remembers useful paths, and deep-checks listings against what you actually asked for.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
 
         queryBox = EditText(this).apply {
             hint = "Try: expedition under 8k with a 3.73 axle"
@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
         column.addView(queryBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val searchButton = Button(this).apply {
-            text = "Deep Search + Combine"
+            text = "Site Brain Deep Search"
             textSize = 17f
             setOnClickListener { startSearch() }
         }
@@ -77,6 +77,9 @@ class MainActivity : AppCompatActivity() {
         sourceSummary.setPadding(0, 18, 0, 10)
         column.addView(sourceSummary)
         refreshSummary()
+
+        column.addView(text("What is new in v5", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("• Every visited page is turned into a semantic Site Brain snapshot.\n• Safe controls such as search, categories, filters and pagination are remembered by meaning.\n• Buy, message, post, delete, checkout and other consequential controls are never explored automatically.\n• Site knowledge is stored locally and reused on later searches.\n• Search results show Site Brain learning/readiness information so we can see which sites still need work.\n\nThis first v5 APK is the learning foundation. It does not pretend every website is already fully understood.", 14f, Color.rgb(180, 195, 215)))
 
         column.addView(text("Vehicle sources in this test", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
         column.addView(text("KSL Cars • Facebook Marketplace • Craigslist • eBay • OfferUp • AutoTrader • Cars.com • CarMax • TrueCar • CarGurus • Edmunds • Autolist • Hemmings • Cars & Bids • Bring a Trailer • Google • Bing\n\nWhen you add a hard limit such as 'under 8k', AI Browser filters the site where possible AND rejects cards above that price. A phrase after 'with' or 'must have' becomes a deep-description requirement, so the browser can open promising listings and look for details such as axle ratio.", 14f, Color.rgb(180, 195, 215)))
@@ -115,7 +118,7 @@ class MainActivity : AppCompatActivity() {
         val category = when {
             listOf("car", "truck", "suv", "vehicle", "ford", "toyota", "honda", "chevy", "expedition", "tacoma", "axle", "mileage").any { q.contains(it) } -> "vehicles"
             listOf("job", "hiring", "career", "work from home").any { q.contains(it) } -> "jobs"
-            listOf("house", "apartment", "rent", "real estate", "home for sale").any { q.contains(it) } -> "realestate"
+            listOf("house", "apartment", "rent", "real estate", "home for sale", "vacation", "timeshare").any { q.contains(it) } -> "realestate"
             else -> "shopping"
         }
         val prefs = getSharedPreferences("sources", MODE_PRIVATE)
@@ -152,8 +155,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showInfo() {
         AlertDialog.Builder(this)
-            .setTitle("How AI Browser Works")
-            .setMessage("1. Search once. AI Browser chooses useful marketplaces and specialty sites automatically.\n\n2. Hard limits such as price and mileage are sent to a site's filters when we know how, then checked again by AI Browser before a result is shown.\n\n3. Details that usually live only inside a listing — for example '3.73 axle', 'no rust', or a specific option — trigger Deep Search. AI Browser opens promising listings and reads the public description before keeping the match.\n\n4. Some sites, especially Facebook Marketplace, need you to sign in. With Remember Sign-ins ON, the site's normal WebView cookies are kept on this device so you normally sign in once. AI Browser never records your password in its logs.\n\n5. CAPTCHA/security checks stay human. AI Browser pauses, you finish the check, then tap Resume.\n\n6. Websites change. A source that cannot be read is shown separately instead of polluting the results.\n\n7. My Sources lets you force a favorite regional site such as KSL into every relevant search.")
+            .setTitle("How Site Brain Works")
+            .setMessage("1. Search once. AI Browser chooses useful marketplaces and specialty sites automatically.\n\n2. While each page is open, Site Brain records a privacy-safe semantic map: page type, headings, categories, search/filter controls, result links and navigation relationships.\n\n3. It remembers what a control means rather than only its screen position. That gives us a foundation for self-repair when a website changes.\n\n4. Hard limits such as price and mileage are sent to a site's filters when we know how, then checked again before a result is shown.\n\n5. Details usually buried inside a listing — for example '3.73 axle', 'no rust', or a specific option — trigger Deep Search.\n\n6. Some sites, especially Facebook Marketplace, need you to sign in. With Remember Sign-ins ON, the site's normal WebView cookies stay on this device. Site Brain knowledge never stores your password or cookies.\n\n7. CAPTCHA/security checks stay human. Site Brain pauses at that boundary instead of trying to defeat it.\n\n8. This is the first Site Brain alpha. Learning quality improves as sites are visited and as we add verified exploration/repair logic in later builds.")
             .setPositiveButton("Got it", null)
             .show()
     }

@@ -3,9 +3,9 @@ const humanChallenge = /captcha|verify you are human|security check|checkpoint|u
 const authRequired = /\b(?:log in|login|sign in|sign-in)\b.*\b(?:continue|marketplace|account)\b|\b(?:marketplace|account)\b.*\b(?:log in|login|sign in)\b/i;
 const siteError = /\berror page\b|something went wrong|temporarily unavailable|page (?:is )?unavailable/i;
 
-const irrelevant = /privacy|terms|legal|cookie policy|accessibility|careers?|jobs?|hiring|press|investor|advertis|help center|support|safety|community guidelines|sell my car|financ|insurance|dealer sign.?in/i;
+const irrelevant = /privacy|terms|legal|cookie policy|accessibility|careers?|jobs?|hiring|press|investor|advertis|help center|support|safety|community guidelines|sell my car|financ|insurance|dealer sign.?in|prohibited|recalled|\bresearch\b/i;
 const consequential = /\b(?:buy|bid|checkout|pay|purchase|message|contact|send|post|publish|upload|delete|remove|follow|subscribe|account|profile|sign\s?in|log\s?in|login|register|create account)\b/i;
-const strongDiscovery = /search|results?|filter|sort|next|previous|pagination|browse|shop|marketplace|categor|inventory|cars? for sale|vehicles? for sale|listings?|items?|details?/i;
+const strongDiscovery = /\b(?:search|results?|filter|sort|next|previous|pagination|browse|shop|marketplace|category|categories|inventory|listing|listings|detail|details)\b|cars? for sale|vehicles? for sale/i;
 
 export function classifyPageBoundary(title = '', visibleText = '') {
   const text = `${title} ${visibleText}`.replace(/\s+/g, ' ').trim();
@@ -16,14 +16,24 @@ export function classifyPageBoundary(title = '', visibleText = '') {
   return null;
 }
 
+export function classifyRouteBoundary(url = '') {
+  let parsed;
+  try { parsed = new URL(url); } catch { return null; }
+  const route = `${parsed.pathname} ${parsed.search}`;
+  if (/\/myaccount\b|\/account\b|\/login\b|\/signin\b|\/sign-in\b|\/checkpoint\b|\/messages?\b|\/settings\b/i.test(route)) {
+    return 'AUTH_REQUIRED';
+  }
+  return null;
+}
+
 export function scoreDiscoveryLink(label = '', href = '') {
   const text = `${label} ${href}`;
-  if (consequential.test(text) || irrelevant.test(text)) return -100;
+  if (consequential.test(text) || irrelevant.test(text) || /\/about(?:\/|$)/i.test(href)) return -100;
   let score = 0;
   if (strongDiscovery.test(label)) score += 8;
   if (strongDiscovery.test(href)) score += 5;
-  if (/\/search|\/browse|\/marketplace|\/cars|\/vehicles|\/inventory|\/listing|\/item/i.test(href)) score += 4;
-  if (/page=|sort=|filter|make=|model=|category/i.test(href)) score += 3;
+  if (/\/search(?:\/|$)|\/browse(?:\/|$)|\/marketplace(?:\/|$)|\/cars(?:\/|$)|\/vehicles(?:\/|$)|\/inventory(?:\/|$)|\/listing(?:\/|$)|\/item(?:\/|$)/i.test(href)) score += 4;
+  if (/[?&](?:page|sort|filter|make|model|category)=/i.test(href)) score += 3;
   if (!label.trim()) score -= 2;
   return score;
 }

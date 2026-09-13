@@ -27,4 +27,10 @@ class LearningReportTest {
         assertFalse(json.contains("801-555-1234"))
         assertFalse(json.contains("secret123"))
     }
+
+    @Test fun reportStillIdentifiesSearchRunWhenNoLearningEventsWereRecorded() {
+        val json = LearningReportWriter.encode(emptyList())
+        assertTrue(json.contains("\"reportType\": \"site_brain_search_run\""))
+        assertTrue(json.contains("\"events\": []"))
+    }
 }

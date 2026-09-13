@@ -23,6 +23,9 @@ jobs:
         run: |
           npm install
           npx playwright install --with-deps chromium
+      - name: Test scout safety and coverage policy
+        working-directory: sitebrain-lab/live-scout
+        run: npm test
       - name: Scout public website structure
         working-directory: sitebrain-lab/live-scout
         env:

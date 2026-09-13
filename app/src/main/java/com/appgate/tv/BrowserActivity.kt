@@ -22,7 +22,6 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.appgate.tv.sitebrain.ExplorerBudget
 import com.appgate.tv.sitebrain.SharedPreferencesSiteBrainStore
-import com.appgate.tv.sitebrain.SiteBrainControllerState
 import com.appgate.tv.sitebrain.SiteBrainRepository
 import com.appgate.tv.sitebrain.WebViewSiteBrainController
 import org.json.JSONArray
@@ -351,7 +350,9 @@ class BrowserActivity : AppCompatActivity() {
                         failures.add("${currentName()}: safe path could not be activated")
                         nextSource()
                     } else {
-                        scheduleExplorationVerification(1400L)
+                        // Navigation actions verify as soon as onPageFinished fires. For controls
+                        // that update the DOM without navigation, this is the conservative fallback.
+                        handler.postDelayed({ scheduleExplorationVerification(0L) }, 4500L)
                     }
                 }
             }
@@ -370,7 +371,10 @@ class BrowserActivity : AppCompatActivity() {
                     val percent = (verified.brain.coverageScore * 100).toInt().coerceIn(0, 100)
                     val readiness = verified.brain.readiness.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
                     siteBrainStatuses[verified.after.host] = "Site Brain: $readiness · $percent% mapped · ${verified.brain.edges.count { it.successCount > 0 }} verified paths"
-                    if (!verified.verification.success) failures.add("${currentName()}: explored path did not produce a verified state change")
+                    if (!verified.verification.success) {
+                        val reason = verified.verification.evidence.firstOrNull().orEmpty()
+                        failures.add("${currentName()}: explored path not verified${if (reason.isBlank()) "" else " ($reason)"}")
+                    }
                 }.onFailure {
                     failures.add("${currentName()}: could not verify explored path")
                 }
@@ -436,20 +440,22 @@ class BrowserActivity : AppCompatActivity() {
         webView.stopLoading()
         if (rememberSignIns) CookieManager.getInstance().flush()
 
+        val verifiedCount = results.values.count { it.deepVerified }
+        val possibleCount = results.size - verifiedCount
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(11, 16, 24)) }
         val list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 24, 24, 40)
         }
         list.addView(label("Deep Search Results", 26f, Color.WHITE, true))
-        list.addView(label("Site Brain is now testing safe website paths, verifying what they do, and remembering successful paths for later searches.", 13f, Color.rgb(135, 190, 255), false).apply { setPadding(0, 4, 0, 8) })
+        list.addView(label("Site Brain is testing safe website paths, verifying what they do, and remembering successful paths for later searches.", 13f, Color.rgb(135, 190, 255), false).apply { setPadding(0, 4, 0, 8) })
         val constraintText = buildString {
             parsed.maxPrice?.let { append("Price ≤ $${"%,d".format(it)}  ") }
             parsed.maxMileage?.let { append("Mileage ≤ ${"%,d".format(it)}  ") }
             if (parsed.requiredTerms.isNotEmpty()) append("Deep match: ${parsed.requiredTerms.joinToString()}")
         }.ifBlank { "No hard constraints detected" }
         list.addView(label(constraintText, 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 6, 0, 6) })
-        list.addView(label("${results.size} verified result${if (results.size == 1) "" else "s"} after searching ${index.coerceAtMost(names.size)} sources", 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 0, 0, 14) })
+        list.addView(label("$verifiedCount verified · $possibleCount possible · searched ${index.coerceAtMost(names.size)} sources", 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 0, 0, 14) })
 
         if (siteBrainStatuses.isNotEmpty()) {
             list.addView(label("Site Brain Learning", 17f, Color.WHITE, true))
@@ -459,7 +465,7 @@ class BrowserActivity : AppCompatActivity() {
         }
 
         if (sourceCounts.isNotEmpty()) {
-            list.addView(label("Matches by source", 17f, Color.WHITE, true).apply { setPadding(0, 12, 0, 0) })
+            list.addView(label("Candidates by source", 17f, Color.WHITE, true).apply { setPadding(0, 12, 0, 0) })
             sourceCounts.forEach { (source, count) -> list.addView(label("• $source: $count", 13f, Color.rgb(150, 205, 160), false)) }
         }
 
@@ -474,7 +480,11 @@ class BrowserActivity : AppCompatActivity() {
                 setBackgroundColor(Color.rgb(28, 37, 52))
             }
             card.addView(label(result.source, 13f, Color.rgb(135, 190, 255), true))
-            if (result.deepVerified) card.addView(label("✓ Description requirement verified", 12f, Color.rgb(145, 220, 155), true))
+            if (result.deepVerified) {
+                card.addView(label("✓ Verified match — detail requirement confirmed", 12f, Color.rgb(145, 220, 155), true))
+            } else {
+                card.addView(label("Possible match — card evidence passed; listing not deeply verified", 12f, Color.rgb(230, 210, 150), true))
+            }
             card.addView(label(result.title, 16f, Color.WHITE, true).apply { setPadding(0, 4, 0, 6) })
             card.addView(Button(this).apply {
                 text = "Open Original Listing"

@@ -16,6 +16,8 @@ data class ParsedSearch(
 )
 
 object SearchIntentParser {
+    const val HARD_LIMITS_DEEP_MARKER = "verify hard limits on full listing"
+
     private val mileageRegex = Regex("""(?i)\b(?:under|below|less\s+than|max(?:imum)?|up\s+to)\s*([\d,.]+)\s*([kK]?)\s*(?:miles?|mi)\b""")
     private val deepRegex = Regex("""(?i)\b(?:with|must\s+have|including)\s+(?:a\s+|an\s+)?(.+?)\s*$""")
     private val priceRegex = Regex("""(?i)\b(?:under|below|less\s+than|max(?:imum)?(?:\s+price)?|up\s+to)\s*\$?\s*([\d,.]+)\s*([kK]?)\s*(?:dollars?|bucks?)?\b""")
@@ -63,12 +65,17 @@ object SearchIntentParser {
         mileage?.let { constraints["max_mileage"] = it.toString() }
         required?.takeIf { it.isNotBlank() }?.let { constraints["detail_required"] = it }
 
+        val requiredTerms = buildList {
+            required?.takeIf { it.isNotBlank() }?.let { add(it) }
+            if (isEmpty() && (price != null || mileage != null)) add(HARD_LIMITS_DEEP_MARKER)
+        }
+
         return ParsedSearch(
             raw = raw,
             coreQuery = core,
             maxPrice = price,
             maxMileage = mileage,
-            requiredTerms = listOfNotNull(required?.takeIf { it.isNotBlank() }),
+            requiredTerms = requiredTerms,
             conceptTerms = concepts,
             hardConstraints = constraints,
             optionalTerms = optional,
@@ -92,17 +99,14 @@ object SearchMatcher {
         val lower = summary.lowercase()
         val coreTokens = tokens(parsed.coreQuery).filterNot { it in stopWords || it.length < 2 }
         if (coreTokens.isNotEmpty() && !coreTokens.all { lower.contains(it) }) return false
-        val mayDeepCheckMissingEvidence = parsed.requiredTerms.isNotEmpty()
 
         parsed.maxPrice?.let { ceiling ->
             val prices = pricesIn(summary)
-            if (prices.isEmpty() && !mayDeepCheckMissingEvidence) return false
             if (prices.isNotEmpty() && prices.minOrNull()!! > ceiling) return false
         }
 
         parsed.maxMileage?.let { ceiling ->
             val miles = mileageIn(summary)
-            if (miles == null && !mayDeepCheckMissingEvidence) return false
             if (miles != null && miles > ceiling) return false
         }
         return true
@@ -117,9 +121,12 @@ object SearchMatcher {
             val miles = mileageIn(text) ?: return false
             if (miles > ceiling) return false
         }
-        if (parsed.requiredTerms.isEmpty()) return true
+
+        val semanticTerms = parsed.requiredTerms.filterNot { it == SearchIntentParser.HARD_LIMITS_DEEP_MARKER }
+        if (semanticTerms.isEmpty()) return true
+
         val haystack = tokens(text).toSet()
-        return parsed.requiredTerms.all { term ->
+        return semanticTerms.all { term ->
             val needed = tokens(term).filterNot { it in stopWords }
             needed.isNotEmpty() && needed.all { it in haystack }
         }

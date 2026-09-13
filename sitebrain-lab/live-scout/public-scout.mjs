@@ -5,7 +5,9 @@ import {
   classifyPageBoundary,
   classifyRouteBoundary,
   scoreDiscoveryLink,
-  calculatePublicCoverage
+  calculatePublicCoverage,
+  isSafeSearchControl,
+  searchProbeForSite
 } from './scout-policy.mjs';
 
 const outDir = process.env.SITEBRAIN_OUT || path.resolve('out');
@@ -32,6 +34,7 @@ const secret = /\b(cookie|session|token|password|authorization|bearer)\b\s*[:=]?
 const clean = s => String(s || '').replace(email,'[redacted]').replace(phone,'[redacted]').replace(secret,'[redacted]').replace(/\s+/g,' ').trim().slice(0,180);
 const b64 = s => Buffer.from(String(s),'utf8').toString('base64url');
 const hostAllowed = (hostname, hosts) => hosts.some(h => hostname === h || hostname.endsWith('.' + h) || h.endsWith('.' + hostname));
+const controlsSelector = 'a[href],button,input,[role="button"],[role="link"],[role="searchbox"]';
 
 function pageType(url,title,labels){
   const words = `${title} ${labels.join(' ')}`.toLowerCase();
@@ -56,12 +59,43 @@ function addCapabilities(capabilities, type, controls, url){
   if (type === 'RESULTS') capabilities.add('RESULTS');
   if (type === 'DETAIL') capabilities.add('DETAIL');
   if (type === 'CATEGORY') capabilities.add('CATEGORY');
-  const combined = controls.map(c => `${c.role} ${c.type} ${c.label}`).join(' ').toLowerCase();
+  const combined = controls.map(c => `${c.role} ${c.type} ${c.label} ${c.name || ''}`).join(' ').toLowerCase();
   if (/searchbox|type.?search|\bsearch\b/.test(combined)) capabilities.add('SEARCH');
   if (/\bfilter\b/.test(combined) || /[?&]filter=/i.test(url)) capabilities.add('FILTER');
   if (/\bsort\b/.test(combined) || /[?&]sort=/i.test(url)) capabilities.add('SORT');
   if (/\bnext\b|\bprevious\b|pagination|page\s*\d/.test(combined) || /[?&]page=/i.test(url)) capabilities.add('PAGINATION');
   if (/\bcategory\b|\bcategories\b|\bbrowse\b|shop by|\bmarketplace\b/.test(combined)) capabilities.add('CATEGORY');
+}
+
+async function trySafeSearchProbe(context, sourcePage, sourceUrl, controls, key, hosts) {
+  const searchControl = controls.find(isSafeSearchControl);
+  if (!searchControl) return null;
+  const probePage = await context.newPage();
+  try {
+    await probePage.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await probePage.waitForTimeout(700);
+    const locator = probePage.locator(controlsSelector).nth(searchControl.i);
+    if (!(await locator.isVisible().catch(() => false))) return null;
+    const query = searchProbeForSite(key);
+    await locator.fill(query, { timeout: 3000 });
+    await locator.press('Enter', { timeout: 3000 });
+    await probePage.waitForLoadState('domcontentloaded', { timeout: 8000 }).catch(() => {});
+    await probePage.waitForTimeout(1000);
+    const probeUrl = probePage.url();
+    let parsed; try { parsed = new URL(probeUrl); } catch { return null; }
+    if (!hostAllowed(parsed.hostname.toLowerCase(), hosts)) return null;
+    if (classifyRouteBoundary(probeUrl)) return null;
+    const title = clean(await probePage.title());
+    const visible = clean((await probePage.locator('body').innerText({ timeout: 3000 }).catch(() => '')).slice(0,12000));
+    if (classifyPageBoundary(title, visible)) return null;
+    const sourceCanonical = new URL(sourcePage.url());
+    if (parsed.href === sourceCanonical.href) return null;
+    return { url: probeUrl, label: `SEARCH:${query}`, score: 100 };
+  } catch {
+    return null;
+  } finally {
+    await probePage.close().catch(() => {});
+  }
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -70,18 +104,20 @@ try {
   for (const [key,entry,hosts] of sites) {
     const context = await browser.newContext({ javaScriptEnabled: true, locale: 'en-US' });
     const page = await context.newPage();
-    const queue = [{ url: entry, from: null, label: 'ENTRY' }];
+    const queue = [{ url: entry, from: null, label: 'ENTRY', score: 1000 }];
     const seen = new Set();
     const nodes = [];
     const edges = [];
     const boundaries = [];
     const capabilities = new Set();
-    const maxPages = key === 'facebook_marketplace' ? 3 : 8;
+    let searchProbeAttempted = false;
+    const maxPages = key === 'facebook_marketplace' ? 3 : 14;
 
     while (queue.length && seen.size < maxPages) {
+      queue.sort((a,b) => (b.score || 0) - (a.score || 0));
       const item = queue.shift();
       let u; try { u = new URL(item.url); } catch { continue; }
-      const canonical = `${u.protocol}//${u.hostname}${u.pathname}`.replace(/\/$/,'') || item.url;
+      const canonical = `${u.protocol}//${u.hostname}${u.pathname}${u.search}`.replace(/\/$/,'') || item.url;
       if (seen.has(canonical) || !hostAllowed(u.hostname.toLowerCase(), hosts)) continue;
       seen.add(canonical);
       try {
@@ -100,12 +136,13 @@ try {
           boundaries.push({ route: new URL(actualUrl).pathname || '/', reason: boundary });
           continue;
         }
-        const controls = await page.locator('a[href],button,input,[role="button"],[role="link"],[role="searchbox"]').evaluateAll(els => els.slice(0,350).map((el,i) => ({
+        const controls = await page.locator(controlsSelector).evaluateAll(els => els.slice(0,350).map((el,i) => ({
           tag: el.tagName.toLowerCase(),
           role: el.getAttribute('role') || '',
           label: (el.innerText || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || '').replace(/\s+/g,' ').trim().slice(0,160),
           href: el.href || el.getAttribute('href') || '',
           type: el.getAttribute('type') || '',
+          name: el.getAttribute('name') || '',
           i
         })));
         const labels = controls.map(c => clean(c.label)).filter(Boolean);
@@ -113,7 +150,16 @@ try {
         addCapabilities(capabilities, type, controls, actualUrl);
         const id = `n${nodes.length + 1}`;
         nodes.push({ id, pageType: type, route: clean(new URL(actualUrl).pathname || '/'), summary: title });
-        if (item.from) edges.push({ from: item.from, to: id, action: 'NAVIGATE', label: clean(item.label), confidence: 0.70, verified: true });
+        if (item.from) edges.push({ from: item.from, to: id, action: item.label?.startsWith('SEARCH:') ? 'SEARCH' : 'NAVIGATE', label: clean(item.label), confidence: 0.75, verified: true });
+
+        if (!searchProbeAttempted) {
+          searchProbeAttempted = true;
+          const probe = await trySafeSearchProbe(context, page, actualUrl, controls, key, hosts);
+          if (probe) {
+            capabilities.add('SEARCH');
+            queue.push({ ...probe, from: id });
+          }
+        }
 
         const candidates = [];
         for (const c of controls) {
@@ -121,14 +167,14 @@ try {
           const href = c.href;
           if (!safeLink(label, href, hosts)) continue;
           let dest; try { dest = new URL(href, actualUrl); } catch { continue; }
-          const destCanonical = `${dest.protocol}//${dest.hostname}${dest.pathname}`.replace(/\/$/,'');
+          const destCanonical = `${dest.protocol}//${dest.hostname}${dest.pathname}${dest.search}`.replace(/\/$/,'');
           if (!seen.has(destCanonical)) {
             candidates.push({ url: dest.href, from: id, label: label || 'link', score: scoreDiscoveryLink(label, dest.href) });
           }
         }
         candidates.sort((a,b) => b.score - a.score);
-        for (const candidate of candidates.slice(0,12)) {
-          if (queue.length >= 60) break;
+        for (const candidate of candidates.slice(0,14)) {
+          if (queue.length >= 80) break;
           queue.push(candidate);
         }
       } catch (err) {

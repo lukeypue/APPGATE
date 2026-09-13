@@ -20,6 +20,10 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.appgate.tv.sitebrain.SharedPreferencesSiteBrainStore
+import com.appgate.tv.sitebrain.SiteBrainControllerState
+import com.appgate.tv.sitebrain.SiteBrainRepository
+import com.appgate.tv.sitebrain.WebViewSiteBrainController
 import org.json.JSONArray
 import org.json.JSONTokener
 
@@ -32,6 +36,7 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private lateinit var resumeButton: Button
+    private lateinit var siteBrainController: WebViewSiteBrainController
 
     private val handler = Handler(Looper.getMainLooper())
     private var names = arrayListOf<String>()
@@ -48,18 +53,23 @@ class BrowserActivity : AppCompatActivity() {
     private val results = LinkedHashMap<String, FoundResult>()
     private val failures = mutableListOf<String>()
     private val sourceCounts = linkedMapOf<String, Int>()
+    private val siteBrainStatuses = linkedMapOf<String, String>()
     private var deepQueue = listOf<CandidateResult>()
     private var deepIndex = 0
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser Deep Search"
+        title = "AI Browser Site Brain"
         names = intent.getStringArrayListExtra("sourceNames") ?: arrayListOf()
         keys = intent.getStringArrayListExtra("sourceKeys") ?: arrayListOf()
         urls = intent.getStringArrayListExtra("sourceUrls") ?: arrayListOf()
         rememberSignIns = intent.getBooleanExtra("rememberSignIns", true)
         parsed = SearchIntentParser.parse(intent.getStringExtra("query").orEmpty())
+        val brainPrefs = getSharedPreferences("site_brain_knowledge", MODE_PRIVATE)
+        siteBrainController = WebViewSiteBrainController(
+            SiteBrainRepository(SharedPreferencesSiteBrainStore(brainPrefs))
+        )
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -85,7 +95,9 @@ class BrowserActivity : AppCompatActivity() {
             isEnabled = false
             setOnClickListener {
                 waitingForHuman = false
+                siteBrainController.markHumanResume()
                 isEnabled = false
+                learnCurrentPage()
                 inspectCurrentPage()
             }
         }
@@ -122,7 +134,12 @@ class BrowserActivity : AppCompatActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     if (rememberSignIns) CookieManager.getInstance().flush()
-                    if (!stopped && !waitingForHuman) handler.postDelayed({ inspectCurrentPage() }, 1100L)
+                    if (!stopped && !waitingForHuman) {
+                        handler.postDelayed({
+                            learnCurrentPage()
+                            inspectCurrentPage()
+                        }, 1100L)
+                    }
                 }
 
                 override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
@@ -150,7 +167,7 @@ class BrowserActivity : AppCompatActivity() {
         resumeButton.isEnabled = false
         progress.max = names.size.coerceAtLeast(1)
         progress.progress = index
-        status.text = "Searching ${index + 1} of ${urls.size}: ${currentName()}"
+        status.text = "Searching ${index + 1} of ${urls.size}: ${currentName()}\nSite Brain is learning this website while it searches."
         webView.loadUrl(urls[index])
     }
 
@@ -181,6 +198,26 @@ class BrowserActivity : AppCompatActivity() {
         webView.loadUrl(candidate.url)
     }
 
+    private fun learnCurrentPage() {
+        if (stopped || !::webView.isInitialized) return
+        siteBrainController.observe(webView) { result ->
+            result.onSuccess { observation ->
+                val line = siteBrainController.statusLine(observation)
+                siteBrainStatuses[observation.snapshot.host] = line
+                if (!stopped) {
+                    val first = status.text.toString().lineSequence().firstOrNull().orEmpty()
+                    status.text = "$first\n$line"
+                }
+                if (observation.controllerState == SiteBrainControllerState.WAITING_FOR_HUMAN) {
+                    // The legacy challenge detector below owns the actual pause/resume UI.
+                    // Site Brain only records that this boundary exists; it never tries to bypass it.
+                }
+            }.onFailure {
+                if (mode == ScanMode.SOURCES) failures.add("${currentName()}: Site Brain could not map this page")
+            }
+        }
+    }
+
     private fun inspectCurrentPage() {
         if (stopped || waitingForHuman) return
         val challengeScript = """
@@ -198,7 +235,7 @@ class BrowserActivity : AppCompatActivity() {
             if (human) {
                 waitingForHuman = true
                 resumeButton.isEnabled = true
-                status.text = "${if (mode == ScanMode.SOURCES) currentName() else deepQueue.getOrNull(deepIndex)?.source ?: "Site"}: sign-in or human verification needed. Complete it in the page, then tap Resume.\n\nIf Remember Sign-ins is ON, the website session is kept on this device."
+                status.text = "${if (mode == ScanMode.SOURCES) currentName() else deepQueue.getOrNull(deepIndex)?.source ?: "Site"}: sign-in or human verification needed. Complete it in the page, then tap Resume.\n\nSite Brain pauses here and does not bypass security. If Remember Sign-ins is ON, the legitimate website session is kept on this device."
                 return@evaluateJavascript
             }
             if (mode == ScanMode.SOURCES) extractSourceResults() else inspectDeepListing()
@@ -261,7 +298,7 @@ class BrowserActivity : AppCompatActivity() {
                     sourceCounts[sourceName] = (sourceCounts[sourceName] ?: 0) + accepted
                 }
                 if (accepted == 0) failures.add("$sourceName: no matching cards read")
-                status.text = "$sourceName: kept $accepted plausible listing${if (accepted == 1) "" else "s"} after hard filters"
+                status.text = "$sourceName: kept $accepted plausible listing${if (accepted == 1) "" else "s"} after hard filters\n${siteBrainStatuses.values.lastOrNull().orEmpty()}"
             } catch (_: Exception) {
                 failures.add("${currentName()}: could not read result cards")
             }
@@ -329,6 +366,7 @@ class BrowserActivity : AppCompatActivity() {
             setPadding(24, 24, 24, 40)
         }
         list.addView(label("Deep Search Results", 26f, Color.WHITE, true))
+        list.addView(label("Site Brain v5 alpha is learning semantic controls and page structure during every search.", 13f, Color.rgb(135, 190, 255), false).apply { setPadding(0, 4, 0, 8) })
         val constraintText = buildString {
             parsed.maxPrice?.let { append("Price ≤ $${"%,d".format(it)}  ") }
             parsed.maxMileage?.let { append("Mileage ≤ ${"%,d".format(it)}  ") }
@@ -337,13 +375,20 @@ class BrowserActivity : AppCompatActivity() {
         list.addView(label(constraintText, 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 6, 0, 6) })
         list.addView(label("${results.size} verified result${if (results.size == 1) "" else "s"} after searching ${index.coerceAtMost(names.size)} sources", 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 0, 0, 14) })
 
+        if (siteBrainStatuses.isNotEmpty()) {
+            list.addView(label("Site Brain Learning", 17f, Color.WHITE, true))
+            siteBrainStatuses.entries.take(20).forEach { (host, line) ->
+                list.addView(label("• $host — $line", 12f, Color.rgb(150, 205, 160), false))
+            }
+        }
+
         if (sourceCounts.isNotEmpty()) {
-            list.addView(label("Matches by source", 17f, Color.WHITE, true))
+            list.addView(label("Matches by source", 17f, Color.WHITE, true).apply { setPadding(0, 12, 0, 0) })
             sourceCounts.forEach { (source, count) -> list.addView(label("• $source: $count", 13f, Color.rgb(150, 205, 160), false)) }
         }
 
         if (results.isEmpty()) {
-            list.addView(label("No listing passed every requested condition yet. That is better than showing expensive or irrelevant listings as matches. Source notes below show which sites may need a stronger adapter or login.", 15f, Color.rgb(230, 210, 150), false).apply { setPadding(0, 14, 0, 14) })
+            list.addView(label("No listing passed every requested condition yet. That is better than showing expensive or irrelevant listings as matches. Source notes below show which sites may need more Site Brain learning, a stronger verified path, or login.", 15f, Color.rgb(230, 210, 150), false).apply { setPadding(0, 14, 0, 14) })
         }
 
         results.values.take(100).forEach { result ->

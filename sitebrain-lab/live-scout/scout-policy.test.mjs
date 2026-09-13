@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   classifyPageBoundary,
   classifyRouteBoundary,
+  classifySemanticPageType,
   scoreDiscoveryLink,
   calculatePublicCoverage,
   isSafeSearchControl,
@@ -23,6 +24,18 @@ test('login-only marketplace page is auth required', () => {
   assert.equal(classifyRouteBoundary('https://www.cargurus.com/Cars/myAccount/saved-listings'), 'AUTH_REQUIRED');
 });
 
+test('known listing routes are classified as detail pages', () => {
+  assert.equal(classifySemanticPageType('https://sfbay.craigslist.org/sfc/cto/d/example/123.html', '2018 Ford Expedition', []), 'DETAIL');
+  assert.equal(classifySemanticPageType('https://www.carmax.com/car/26012345', '2021 Ford Expedition', []), 'DETAIL');
+  assert.equal(classifySemanticPageType('https://www.cargurus.com/Cars/inventorylisting/viewDetailsFilterViewInventoryListing.action?listingId=12345', 'Ford Expedition', []), 'DETAIL');
+  assert.equal(classifySemanticPageType('https://offerup.com/item/detail/abc', 'Bicycle', []), 'DETAIL');
+});
+
+test('search result and category routes remain distinct from detail pages', () => {
+  assert.equal(classifySemanticPageType('https://www.cargurus.com/search?make=Ford', 'Used Cars', ['Filter', 'Sort']), 'RESULTS');
+  assert.equal(classifySemanticPageType('https://www.carmax.com/cars/suvs', 'Used SUVs', ['Shop SUVs']), 'CATEGORY');
+});
+
 test('marketplace discovery favors search structure over legal and editorial links', () => {
   const search = scoreDiscoveryLink('Cars for Sale', 'https://example.com/cars');
   const filter = scoreDiscoveryLink('Filter results', 'https://example.com/cars?make=ford');
@@ -36,6 +49,15 @@ test('marketplace discovery favors search structure over legal and editorial lin
   assert.ok(login <= 0);
   assert.ok(prohibited <= 0);
   assert.ok(research <= 0);
+});
+
+test('listing-looking links get strong discovery priority', () => {
+  const carmax = scoreDiscoveryLink('2021 Ford Expedition', 'https://www.carmax.com/car/26012345');
+  const cargurus = scoreDiscoveryLink('2020 Ford Expedition XLT', 'https://www.cargurus.com/Cars/inventorylisting/viewDetailsFilterViewInventoryListing.action?listingId=12345');
+  const craigslist = scoreDiscoveryLink('2018 Ford Expedition', 'https://sfbay.craigslist.org/sfc/cto/d/example/123.html');
+  assert.ok(carmax >= 10);
+  assert.ok(cargurus >= 10);
+  assert.ok(craigslist >= 10);
 });
 
 test('only real search controls may be submitted by the scout', () => {

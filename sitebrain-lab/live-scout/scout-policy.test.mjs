@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   classifyPageBoundary,
+  classifyRouteBoundary,
   scoreDiscoveryLink,
   calculatePublicCoverage
 } from './scout-policy.mjs';
@@ -17,17 +18,22 @@ test('login-only marketplace page is auth required', () => {
     classifyPageBoundary('Facebook Marketplace', 'Log in to Facebook to continue to Marketplace'),
     'AUTH_REQUIRED'
   );
+  assert.equal(classifyRouteBoundary('https://www.cargurus.com/Cars/myAccount/saved-listings'), 'AUTH_REQUIRED');
 });
 
-test('marketplace discovery favors search structure over legal and account links', () => {
+test('marketplace discovery favors search structure over legal and editorial links', () => {
   const search = scoreDiscoveryLink('Cars for Sale', 'https://example.com/cars');
   const filter = scoreDiscoveryLink('Filter results', 'https://example.com/cars?make=ford');
   const privacy = scoreDiscoveryLink('Privacy Policy', 'https://example.com/privacy');
   const login = scoreDiscoveryLink('Log in', 'https://example.com/login');
+  const prohibited = scoreDiscoveryLink('prohibited items', 'https://example.com/about/prohibited');
+  const research = scoreDiscoveryLink('Research', 'https://example.com/research');
   assert.ok(search > privacy);
   assert.ok(filter > privacy);
   assert.ok(privacy <= 0);
   assert.ok(login <= 0);
+  assert.ok(prohibited <= 0);
+  assert.ok(research <= 0);
 });
 
 test('blocked or empty sites cannot report one hundred percent learned', () => {

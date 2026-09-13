@@ -20,6 +20,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.appgate.tv.sitebrain.ExplorerBudget
 import com.appgate.tv.sitebrain.SharedPreferencesSiteBrainStore
 import com.appgate.tv.sitebrain.SiteBrainControllerState
 import com.appgate.tv.sitebrain.SiteBrainRepository
@@ -47,6 +48,8 @@ class BrowserActivity : AppCompatActivity() {
     private var stopped = false
     private var rememberSignIns = true
     private var mode = ScanMode.SOURCES
+    private var explorationInProgress = false
+    private var explorationVerificationScheduled = false
     private lateinit var parsed: ParsedSearch
 
     private val candidates = LinkedHashMap<String, CandidateResult>()
@@ -54,6 +57,7 @@ class BrowserActivity : AppCompatActivity() {
     private val failures = mutableListOf<String>()
     private val sourceCounts = linkedMapOf<String, Int>()
     private val siteBrainStatuses = linkedMapOf<String, String>()
+    private val exploredSources = mutableSetOf<Int>()
     private var deepQueue = listOf<CandidateResult>()
     private var deepIndex = 0
 
@@ -105,6 +109,8 @@ class BrowserActivity : AppCompatActivity() {
         controls.addView(Button(this).apply {
             text = "Skip"
             setOnClickListener {
+                explorationInProgress = false
+                explorationVerificationScheduled = false
                 if (mode == ScanMode.SOURCES) {
                     failures.add("${currentName()}: skipped")
                     nextSource()
@@ -134,12 +140,15 @@ class BrowserActivity : AppCompatActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     if (rememberSignIns) CookieManager.getInstance().flush()
-                    if (!stopped && !waitingForHuman) {
-                        handler.postDelayed({
-                            learnCurrentPage()
-                            inspectCurrentPage()
-                        }, 1100L)
+                    if (stopped || waitingForHuman) return
+                    if (explorationInProgress) {
+                        scheduleExplorationVerification(650L)
+                        return
                     }
+                    handler.postDelayed({
+                        learnCurrentPage()
+                        inspectCurrentPage()
+                    }, 1100L)
                 }
 
                 override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
@@ -164,6 +173,8 @@ class BrowserActivity : AppCompatActivity() {
         }
         mode = ScanMode.SOURCES
         waitingForHuman = false
+        explorationInProgress = false
+        explorationVerificationScheduled = false
         resumeButton.isEnabled = false
         progress.max = names.size.coerceAtLeast(1)
         progress.progress = index
@@ -191,6 +202,8 @@ class BrowserActivity : AppCompatActivity() {
         }
         mode = ScanMode.DEEP
         waitingForHuman = false
+        explorationInProgress = false
+        explorationVerificationScheduled = false
         resumeButton.isEnabled = false
         progress.progress = deepIndex
         val candidate = deepQueue[deepIndex]
@@ -199,7 +212,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun learnCurrentPage() {
-        if (stopped || !::webView.isInitialized) return
+        if (stopped || !::webView.isInitialized || explorationInProgress) return
         siteBrainController.observe(webView) { result ->
             result.onSuccess { observation ->
                 val line = siteBrainController.statusLine(observation)
@@ -208,10 +221,6 @@ class BrowserActivity : AppCompatActivity() {
                     val first = status.text.toString().lineSequence().firstOrNull().orEmpty()
                     status.text = "$first\n$line"
                 }
-                if (observation.controllerState == SiteBrainControllerState.WAITING_FOR_HUMAN) {
-                    // The legacy challenge detector below owns the actual pause/resume UI.
-                    // Site Brain only records that this boundary exists; it never tries to bypass it.
-                }
             }.onFailure {
                 if (mode == ScanMode.SOURCES) failures.add("${currentName()}: Site Brain could not map this page")
             }
@@ -219,7 +228,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun inspectCurrentPage() {
-        if (stopped || waitingForHuman) return
+        if (stopped || waitingForHuman || explorationInProgress) return
         val challengeScript = """
             (function(){
               var t=((document.title||'')+' '+((document.body&&document.body.innerText)||'')).toLowerCase();
@@ -302,8 +311,72 @@ class BrowserActivity : AppCompatActivity() {
             } catch (_: Exception) {
                 failures.add("${currentName()}: could not read result cards")
             }
-            handler.postDelayed({ nextSource() }, 450L)
+            handler.postDelayed({ exploreCurrentSourceThenAdvance() }, 350L)
         }
+    }
+
+    private fun exploreCurrentSourceThenAdvance() {
+        if (stopped || mode != ScanMode.SOURCES || index !in urls.indices) return
+        if (index in exploredSources) {
+            nextSource()
+            return
+        }
+        exploredSources += index
+        siteBrainController.observe(webView) { result ->
+            result.onFailure {
+                failures.add("${currentName()}: Site Brain exploration snapshot failed")
+                nextSource()
+            }.onSuccess { observation ->
+                val priority = currentKey() in setOf("ksl_cars", "facebook_marketplace", "ebay")
+                val budget = ExplorerBudget(
+                    maxPages = if (priority) 12 else 6,
+                    maxActions = 1,
+                    maxRevisitsPerFingerprint = 2,
+                    maxElapsedMs = if (priority) 20_000L else 12_000L,
+                    pagesSeen = observation.brain.nodes.size,
+                    actionsTaken = 0
+                )
+                val prepared = siteBrainController.prepareExploration(observation, budget, parsed.coreQuery)
+                if (prepared == null) {
+                    siteBrainStatuses[observation.snapshot.host] = siteBrainController.statusLine(observation)
+                    nextSource()
+                    return@onSuccess
+                }
+                explorationInProgress = true
+                explorationVerificationScheduled = false
+                status.text = "Learning ${currentName()}: testing a safe path\n${prepared.semanticIntent}"
+                siteBrainController.executePrepared(webView, prepared) { accepted ->
+                    if (!accepted) {
+                        explorationInProgress = false
+                        failures.add("${currentName()}: safe path could not be activated")
+                        nextSource()
+                    } else {
+                        scheduleExplorationVerification(1400L)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun scheduleExplorationVerification(delayMs: Long) {
+        if (!explorationInProgress || explorationVerificationScheduled || stopped) return
+        explorationVerificationScheduled = true
+        handler.postDelayed({
+            if (!explorationInProgress || stopped) return@postDelayed
+            siteBrainController.verifyPending(webView) { result ->
+                explorationVerificationScheduled = false
+                explorationInProgress = false
+                result.onSuccess { verified ->
+                    val percent = (verified.brain.coverageScore * 100).toInt().coerceIn(0, 100)
+                    val readiness = verified.brain.readiness.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+                    siteBrainStatuses[verified.after.host] = "Site Brain: $readiness · $percent% mapped · ${verified.brain.edges.count { it.successCount > 0 }} verified paths"
+                    if (!verified.verification.success) failures.add("${currentName()}: explored path did not produce a verified state change")
+                }.onFailure {
+                    failures.add("${currentName()}: could not verify explored path")
+                }
+                nextSource()
+            }
+        }, delayMs)
     }
 
     private fun inspectDeepListing() {
@@ -329,6 +402,8 @@ class BrowserActivity : AppCompatActivity() {
 
     private fun nextSource() {
         if (stopped) return
+        explorationInProgress = false
+        explorationVerificationScheduled = false
         index++
         loadCurrentSource()
     }
@@ -356,6 +431,7 @@ class BrowserActivity : AppCompatActivity() {
     private fun showCombinedResults() {
         if (stopped) return
         stopped = true
+        explorationInProgress = false
         handler.removeCallbacksAndMessages(null)
         webView.stopLoading()
         if (rememberSignIns) CookieManager.getInstance().flush()
@@ -366,7 +442,7 @@ class BrowserActivity : AppCompatActivity() {
             setPadding(24, 24, 24, 40)
         }
         list.addView(label("Deep Search Results", 26f, Color.WHITE, true))
-        list.addView(label("Site Brain v5 alpha is learning semantic controls and page structure during every search.", 13f, Color.rgb(135, 190, 255), false).apply { setPadding(0, 4, 0, 8) })
+        list.addView(label("Site Brain is now testing safe website paths, verifying what they do, and remembering successful paths for later searches.", 13f, Color.rgb(135, 190, 255), false).apply { setPadding(0, 4, 0, 8) })
         val constraintText = buildString {
             parsed.maxPrice?.let { append("Price ≤ $${"%,d".format(it)}  ") }
             parsed.maxMileage?.let { append("Mileage ≤ ${"%,d".format(it)}  ") }

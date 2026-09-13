@@ -44,17 +44,19 @@ The shared Site Brain must never contain passwords, cookies, session tokens, pay
 
 ## Research-Informed Direction
 
-Current browser-agent projects validate several pieces of this architecture:
+The strongest 2026 match to this design is **WebChallenger**, published in June 2026. Its PageMem/WebsiteMem architecture deterministically converts DOM pages into semantic sections, explores each website to build reusable memory of pages and element behavior, selectively reads only relevant regions, and uses reusable compound workflows. It explicitly reports generalization without per-site adapters. This strongly validates the Site Brain direction and gives us concrete ideas for semantic page decomposition, persistent site memory, selective observation, and reusable workflows. Its published code is MIT licensed, so we can inspect and adapt compatible ideas carefully rather than copying incompatible dependencies wholesale.
+
+Other current browser-agent projects validate additional pieces of the architecture:
 
 - Browser Use provides LLM-controlled browser agents and persistent browser automation patterns.
 - Browser Harness focuses on a self-healing browser layer where agents can create reusable domain skills as they encounter missing interaction recipes.
 - BrowserCode treats browser automation as a code-generation problem and reuses scripts learned during prior tasks.
-- Skyvern combines Playwright, LLM reasoning, and computer vision to avoid brittle XPath-only automation.
+- Skyvern combines Playwright, LLM reasoning, and computer vision to avoid brittle XPath-only automation. Its core repository is AGPL-3.0, so we should learn from the architecture without importing AGPL code into the Android app unless licensing is intentionally accepted.
 - Stagehand exposes higher-level AI browser actions while retaining normal browser automation underneath.
 - Playwright MCP exposes structured accessibility snapshots to LLMs, showing the value of semantic page representations rather than raw selectors.
 - webagents.md explores the future possibility that sites may publish machine-discoverable tools directly.
 
-AI Browser should borrow the useful ideas but keep its own product model: persistent per-domain semantic graphs, evidence-backed action meanings, broad category/path exploration, on-device session continuity, safe human handoff, and search-specific coverage scoring.
+AI Browser should combine these lessons into its own Android-first product model: persistent per-domain semantic graphs, evidence-backed action meanings, broad category/path exploration, on-device session continuity, safe human handoff, and search-specific coverage scoring.
 
 ## Architecture
 
@@ -66,6 +68,8 @@ A snapshot includes:
 
 - URL, title, host and normalized route signature
 - visible text summary
+- semantic DOM sections (header, form, navigation, list, table, article, main content and other natural boundaries)
+- short section summaries so the Search Brain can skim before expanding details
 - headings and landmarks
 - forms and search inputs
 - buttons and links
@@ -274,7 +278,7 @@ The next APK should establish the architecture without pretending that every sit
 It will add:
 
 - persistent Site Brain models and local storage
-- semantic DOM snapshots
+- PageMem-inspired semantic DOM sectioning and compact section summaries
 - safe-action classifier
 - breadth-first Explorer with strict budgets
 - outcome verification
@@ -304,6 +308,7 @@ Unit tests cover:
 
 - action safety classification
 - semantic page-state fingerprinting
+- semantic section decomposition
 - duplicate-state detection
 - graph persistence
 - confidence/readiness transitions

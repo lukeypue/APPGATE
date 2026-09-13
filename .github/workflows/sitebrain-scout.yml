@@ -18,13 +18,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: sitebrain-lab/live-scout/package-lock.json
       - name: Install scout dependencies
         working-directory: sitebrain-lab/live-scout
         run: |
-          npm install --package-lock-only
-          npm ci
+          npm install
           npx playwright install --with-deps chromium
       - name: Scout public website structure
         working-directory: sitebrain-lab/live-scout

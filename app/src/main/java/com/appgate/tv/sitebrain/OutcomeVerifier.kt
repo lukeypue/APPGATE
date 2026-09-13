@@ -9,16 +9,26 @@ data class VerificationResult(
 object OutcomeVerifier {
     fun verify(before: PageSnapshot, action: SiteEdge, after: PageSnapshot): VerificationResult {
         val evidence = mutableListOf<String>()
-        if (before.routeSignature != after.routeSignature) evidence += "route changed"
-        if (before.pageType != after.pageType) evidence += "page type ${before.pageType} -> ${after.pageType}"
-        if (before.headings.map { it.lowercase() } != after.headings.map { it.lowercase() }) evidence += "headings changed"
-        if (selectedLabels(before) != selectedLabels(after)) evidence += "selected controls changed"
-        if (before.fingerprint != after.fingerprint) evidence += "semantic page state changed"
-        if (action.expectedPageType != null && after.pageType == action.expectedPageType) evidence += "expected page type reached"
+        val routeChanged = before.routeSignature != after.routeSignature
+        val pageTypeChanged = before.pageType != after.pageType
+        val selectedChanged = selectedLabels(before) != selectedLabels(after)
+        val semanticStateChanged = before.fingerprint != after.fingerprint
 
-        val meaningful = evidence.any {
-            it == "route changed" || it.startsWith("page type") || it == "selected controls changed" || it == "expected page type reached"
+        if (routeChanged) evidence += "route changed"
+        if (pageTypeChanged) evidence += "page type ${before.pageType} -> ${after.pageType}"
+        if (before.headings.map { it.lowercase() } != after.headings.map { it.lowercase() }) evidence += "headings changed"
+        if (selectedChanged) evidence += "selected controls changed"
+        if (semanticStateChanged) evidence += "semantic page state changed"
+
+        // Merely already being on the expected page type does not prove a click worked.
+        // The expected page type counts only when the action also produced a meaningful state transition.
+        if (action.expectedPageType != null && after.pageType == action.expectedPageType &&
+            (routeChanged || pageTypeChanged || selectedChanged || semanticStateChanged)) {
+            evidence += "expected page type reached"
         }
+
+        val meaningful = routeChanged || pageTypeChanged || selectedChanged ||
+            (semanticStateChanged && evidence.any { it == "expected page type reached" })
         return VerificationResult(
             success = meaningful,
             confidenceDelta = if (meaningful) 0.15 else -0.10,

@@ -123,7 +123,7 @@ object SearchUrlBuilder {
         var url = if (make != null) {
             val model = query.substring(make.length).trim().trim(',', '-', ' ')
             if (model.isNotBlank()) {
-                "https://cars.ksl.com/search/make/${encodePath(make)}/model/${encodePath(model)}"
+                "https://cars.ksl.com/search/make/${encodePath(make)}/model/${encodePath(titleCaseWords(model))}"
             } else {
                 "https://cars.ksl.com/search/make/${encodePath(make)}"
             }
@@ -133,6 +133,10 @@ object SearchUrlBuilder {
         parsed.maxPrice?.let { url += "/priceFrom/0/priceTo/$it" }
         parsed.maxMileage?.let { url += "/mileageFrom/0/mileageTo/$it" }
         return url
+    }
+
+    private fun titleCaseWords(value: String): String = value.split(Regex("""\s+""")).joinToString(" ") { word ->
+        if (word.isBlank()) word else word.lowercase().replaceFirstChar { c -> c.uppercase() }
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")

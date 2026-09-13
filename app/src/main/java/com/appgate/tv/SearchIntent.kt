@@ -30,7 +30,11 @@ object SearchIntentParser {
         val mileage = mileageRegex.find(working)?.let { parseAmount(it.groupValues[1], it.groupValues[2]) }
         working = mileageRegex.replace(working, " ")
 
-        val required = deepRegex.find(working)?.groupValues?.getOrNull(1)?.trim()?.trimEnd('.', ',', ';')
+        val required = deepRegex.find(working)?.groupValues?.getOrNull(1)
+            ?.trim()
+            ?.replace(Regex("""(?i)\s+(?:and|or)\s*$"""), "")
+            ?.trim()
+            ?.trimEnd('.', ',', ';')
         working = deepRegex.replace(working, " ")
 
         val optional = optionalRegex.findAll(working).mapNotNull { it.groupValues.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) }.toList()

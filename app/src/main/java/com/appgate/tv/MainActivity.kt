@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v6.3 Deep Search"
+        title = "AI Browser v6.5 Start Learning"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -31,10 +31,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Site Brain v6.3 — Facebook Marketplace is attempted first for vehicle searches, every real source load is logged, and deep candidates are domain-locked before verification.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
+        column.addView(text("Site Brain v6.5 — autonomous whole-site learning is now available. Start Learning maps safe website capabilities, checkpoints progress, and keeps learned Site Brain knowledge across normal app updates.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 16) })
+
+        column.addView(Button(this).apply {
+            text = "START LEARNING"
+            textSize = 19f
+            setOnClickListener { startActivity(Intent(this@MainActivity, LearningActivity::class.java)) }
+        })
+        column.addView(text("Press this and leave it running. Site Brain rotates through websites, tries safe unexplored controls, verifies what changed, saves checkpoints, and keeps going. If a site needs login/CAPTCHA, it pauses for you and then resumes. Use Share Learning Logs when you want me to analyze what it learned or where it got stuck.", 13f, Color.rgb(155, 215, 175)).apply { setPadding(4, 4, 0, 18) })
 
         queryBox = EditText(this).apply {
-            hint = "Try: Ford Expedition under 8k under 150k miles with a 3.73 axle"
+            hint = "Deep Search: Ford Expedition under 8k under 150k miles with a 3.73 axle"
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(130, 145, 165))
             setSingleLine(false)
@@ -60,13 +67,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         column.addView(rememberSignIns)
-        column.addView(text("Recommended: ON. AI Browser does not save your password; the website's normal WebView cookies keep you signed in. Security checks are still completed by you.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 10) })
+        column.addView(text("Recommended: ON. AI Browser does not save your password; each website's normal WebView cookies keep you signed in. Security checks are still completed by you.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 10) })
 
         column.addView(Button(this).apply {
             text = "Connect Facebook Marketplace (1-time sign-in)"
             setOnClickListener { openFacebookMarketplace() }
         })
-        column.addView(text("Do this once before your first Marketplace search. Sign in to Facebook in the page that opens, then press Back to return here. With Remember sign-ins ON, the normal Facebook session stays on this device for later searches.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 0, 0, 14) })
+        column.addView(text("Do this once before training or searching Marketplace. Sign in to Facebook in the page that opens, then press Back to return here.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 0, 0, 14) })
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(Button(this).apply {
@@ -84,11 +91,8 @@ class MainActivity : AppCompatActivity() {
         column.addView(sourceSummary)
         refreshSummary()
 
-        column.addView(text("What is new in v6.3", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("• Facebook Marketplace is now the first vehicle source so its pass is visible and cannot hide behind later sites.\n• Every source gets SOURCE_START and SOURCE_PAGE_LOADED diagnostics; the result screen counts sources that really loaded instead of merely counting planned sources.\n• Facebook must actually reach a facebook.com page to count as loaded. Login/security pages pause for you instead of silently moving on.\n• Candidate counts are tracked per source, so shared test data shows whether Facebook, KSL, eBay, and each other site actually produced listings.\n• Google-backed specialty sources are domain-locked so a CARFAX search only contributes CARFAX links, Carvana only Carvana links, and so on.\n• Price, mileage, and description-level requirements such as 3.73 axle still require full-listing verification before a result is marked verified.\n• CAPTCHA and account security checks remain human-only.", 14f, Color.rgb(180, 195, 215)))
-
-        column.addView(text("Vehicle sources in this test", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("Facebook Marketplace • KSL Cars • Craigslist • eBay • OfferUp • AutoTrader • Cars.com • CarMax • CARFAX • Carvana • Kelley Blue Book • CarsForSale.com • PrivateAuto • TrueCar • CarGurus • Edmunds • Autolist • Hemmings • Cars & Bids • Bring a Trailer • Google • Bing\n\nHard limits are applied to site filters when supported, rejected immediately when a card clearly violates them, and otherwise verified from the full listing page. Details after 'with' or 'must have' are also checked in the listing text.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("What is new in v6.5", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("• START LEARNING launches a dedicated mapping run that is not tied to your current search.\n• Training starts from each site's real root instead of a Ford/vehicle query.\n• Each learning site has its own session/host guard so stale callbacks from another site are ignored instead of poisoning the wrong Site Brain.\n• The run saves its current site, verified-discovery count and completed passes so later runs resume instead of starting from zero.\n• Learned website knowledge remains in the separate Site Brain store across normal APK updates.\n• Pause, Resume, Stop and Share Learning Logs are built into the training screen.\n• Consequential actions remain blocked and login/CAPTCHA/2FA stay human-only.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)
@@ -148,7 +152,7 @@ class MainActivity : AppCompatActivity() {
         val checked = BooleanArray(sources.size) { i -> prefs.getBoolean("always_${sources[i].key}", false) }
         AlertDialog.Builder(this)
             .setTitle("Always Search These Sources")
-            .setMessage("Turn on any site you want included in every search. This is useful for regional sites like KSL even when you are outside Utah.")
+            .setMessage("Turn on any site you want included in every search. This controls Deep Search; Start Learning has its own broad training catalog.")
             .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
             .setPositiveButton("Save") { _, _ ->
                 val e = prefs.edit()
@@ -163,13 +167,13 @@ class MainActivity : AppCompatActivity() {
     private fun refreshSummary() {
         val prefs = getSharedPreferences("sources", MODE_PRIVATE)
         val always = sources.filter { prefs.getBoolean("always_${it.key}", false) }.map { it.name }
-        sourceSummary.text = if (always.isEmpty()) "AI chooses sources automatically. You can also pin favorite sources." else "Always search: ${always.joinToString()}"
+        sourceSummary.text = if (always.isEmpty()) "Deep Search chooses sources automatically. Start Learning trains the broad site catalog." else "Always search: ${always.joinToString()}"
     }
 
     private fun showInfo() {
         AlertDialog.Builder(this)
             .setTitle("How Site Brain Works")
-            .setMessage("1. Vehicle searches try Facebook Marketplace first, then the other marketplaces and specialty sites.\n\n2. Before your first Marketplace search, use Connect Facebook Marketplace once and complete Facebook's normal login yourself.\n\n3. Every source start and completed page load is recorded in the test data, so a site cannot be counted merely because it was planned.\n\n4. Hard limits such as price and mileage are sent to a site's filters when we know how. If a result card omits a hard field, AI Browser can open the full listing and verify it there instead of throwing the listing away.\n\n5. Details usually buried inside a listing — for example '3.73 axle', 'no rust', or a specific option — are also checked on the full listing page.\n\n6. Consequential controls such as Buy, Message, Post, Delete, Checkout, payment and account changes are never used during automatic exploration.\n\n7. With Remember Sign-ins ON, websites keep their normal WebView cookies on this device. Site Brain knowledge never stores your password or cookies.\n\n8. CAPTCHA/security checks stay human. Site Brain pauses at that boundary instead of trying to defeat it.")
+            .setMessage("START LEARNING is different from Deep Search. It maps websites themselves rather than one query. It starts from a site's root, observes safe controls, attempts unexplored safe actions, verifies the resulting state, saves what worked, then moves through the training catalog and repeats later.\n\nThe learning checkpoint and Site Brain knowledge are stored separately from the APK, so a normal app update does not intentionally erase what has already been learned.\n\nEach site's learning session is host-locked so stale callbacks from a previous site are ignored.\n\nBuy, Message, Post, Delete, Checkout, payment, account changes and similar consequential actions are not automated. Login, CAPTCHA and 2FA pause for you.\n\nUse Share Learning Logs if training appears stuck or after a long run so the mapper can be improved from evidence.")
             .setPositiveButton("Got it", null)
             .show()
     }

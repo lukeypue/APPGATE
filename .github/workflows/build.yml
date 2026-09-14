@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -48,6 +51,25 @@ jobs:
       - name: Build debug APK
         working-directory: ${{ steps.proj.outputs.dir }}
         run: gradle assembleDebug --stacktrace
+
+      - name: Prepare latest updater APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search'
+        run: |
+          APK=$(find . -path '*/app/build/outputs/apk/debug/app-debug.apk' -print -quit)
+          test -n "$APK"
+          cp "$APK" AI-Browser-latest.apk
+
+      - name: Publish fixed latest release for in-app Update button
+        if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view ai-browser-latest >/dev/null 2>&1; then
+            gh release upload ai-browser-latest AI-Browser-latest.apk --clobber
+            gh release edit ai-browser-latest --title "AI Browser Latest" --notes "Latest verified AI Browser build. Install over the existing app to preserve Site Brain data."
+          else
+            gh release create ai-browser-latest AI-Browser-latest.apk --title "AI Browser Latest" --notes "Latest verified AI Browser build. Install over the existing app to preserve Site Brain data."
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

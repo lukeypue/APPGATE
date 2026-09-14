@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v6.1 Deep Search"
+        title = "AI Browser v6.3 Deep Search"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Site Brain v6.1 — search many websites, open promising listings, verify hard limits from full listing pages, and remember what each site taught us.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
+        column.addView(text("Site Brain v6.3 — Facebook Marketplace is attempted first for vehicle searches, every real source load is logged, and deep candidates are domain-locked before verification.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 20) })
 
         queryBox = EditText(this).apply {
             hint = "Try: Ford Expedition under 8k under 150k miles with a 3.73 axle"
@@ -84,11 +84,11 @@ class MainActivity : AppCompatActivity() {
         column.addView(sourceSummary)
         refreshSummary()
 
-        column.addView(text("What is new in v6.1", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("• Price and mileage no longer have to be visible on a small result card. A plausible listing can be opened and verified from its full page.\n• Hard limits such as under $8,000 or under 150k miles now trigger full-listing verification even when you did not include a description phrase.\n• Facebook Marketplace has a dedicated one-time sign-in button so Facebook cannot silently disappear from a search just because its login wording changes.\n• Remember sign-ins keeps the website's normal session cookies on this device; AI Browser never stores your Facebook password itself.\n• CAPTCHA and account security checks remain human-only.\n• Site Brain still learns only read-only, safe website paths; buy, message, post, delete, checkout, payment and account-changing controls remain off-limits to automatic exploration.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("What is new in v6.3", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("• Facebook Marketplace is now the first vehicle source so its pass is visible and cannot hide behind later sites.\n• Every source gets SOURCE_START and SOURCE_PAGE_LOADED diagnostics; the result screen counts sources that really loaded instead of merely counting planned sources.\n• Facebook must actually reach a facebook.com page to count as loaded. Login/security pages pause for you instead of silently moving on.\n• Candidate counts are tracked per source, so shared test data shows whether Facebook, KSL, eBay, and each other site actually produced listings.\n• Google-backed specialty sources are domain-locked so a CARFAX search only contributes CARFAX links, Carvana only Carvana links, and so on.\n• Price, mileage, and description-level requirements such as 3.73 axle still require full-listing verification before a result is marked verified.\n• CAPTCHA and account security checks remain human-only.", 14f, Color.rgb(180, 195, 215)))
 
         column.addView(text("Vehicle sources in this test", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("KSL Cars • Facebook Marketplace • Craigslist • eBay • OfferUp • AutoTrader • Cars.com • CarMax • CARFAX • Carvana • Kelley Blue Book • CarsForSale.com • PrivateAuto • TrueCar • CarGurus • Edmunds • Autolist • Hemmings • Cars & Bids • Bring a Trailer • Google • Bing\n\nHard limits are applied to site filters when supported, rejected immediately when a card clearly violates them, and otherwise verified from the full listing page. Details after 'with' or 'must have' are also checked in the listing text.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("Facebook Marketplace • KSL Cars • Craigslist • eBay • OfferUp • AutoTrader • Cars.com • CarMax • CARFAX • Carvana • Kelley Blue Book • CarsForSale.com • PrivateAuto • TrueCar • CarGurus • Edmunds • Autolist • Hemmings • Cars & Bids • Bring a Trailer • Google • Bing\n\nHard limits are applied to site filters when supported, rejected immediately when a card clearly violates them, and otherwise verified from the full listing page. Details after 'with' or 'must have' are also checked in the listing text.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)
@@ -169,7 +169,7 @@ class MainActivity : AppCompatActivity() {
     private fun showInfo() {
         AlertDialog.Builder(this)
             .setTitle("How Site Brain Works")
-            .setMessage("1. Search once. AI Browser chooses useful marketplaces and specialty sites automatically.\n\n2. Before your first Marketplace search, use Connect Facebook Marketplace once and complete Facebook's normal login yourself.\n\n3. While each page is open, Site Brain records a privacy-safe semantic map: page type, headings, categories, search/filter controls, result links and navigation relationships.\n\n4. Hard limits such as price and mileage are sent to a site's filters when we know how. If a result card omits a hard field, AI Browser can open the full listing and verify it there instead of throwing the listing away.\n\n5. Details usually buried inside a listing — for example '3.73 axle', 'no rust', or a specific option — are also checked on the full listing page.\n\n6. Consequential controls such as Buy, Message, Post, Delete, Checkout, payment and account changes are never used during automatic exploration.\n\n7. With Remember Sign-ins ON, websites keep their normal WebView cookies on this device. Site Brain knowledge never stores your password or cookies.\n\n8. CAPTCHA/security checks stay human. Site Brain pauses at that boundary instead of trying to defeat it.")
+            .setMessage("1. Vehicle searches try Facebook Marketplace first, then the other marketplaces and specialty sites.\n\n2. Before your first Marketplace search, use Connect Facebook Marketplace once and complete Facebook's normal login yourself.\n\n3. Every source start and completed page load is recorded in the test data, so a site cannot be counted merely because it was planned.\n\n4. Hard limits such as price and mileage are sent to a site's filters when we know how. If a result card omits a hard field, AI Browser can open the full listing and verify it there instead of throwing the listing away.\n\n5. Details usually buried inside a listing — for example '3.73 axle', 'no rust', or a specific option — are also checked on the full listing page.\n\n6. Consequential controls such as Buy, Message, Post, Delete, Checkout, payment and account changes are never used during automatic exploration.\n\n7. With Remember Sign-ins ON, websites keep their normal WebView cookies on this device. Site Brain knowledge never stores your password or cookies.\n\n8. CAPTCHA/security checks stay human. Site Brain pauses at that boundary instead of trying to defeat it.")
             .setPositiveButton("Got it", null)
             .show()
     }

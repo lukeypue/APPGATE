@@ -11,6 +11,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      AI_BROWSER_SIGNING_PASSWORD: ${{ secrets.AI_BROWSER_SIGNING_PASSWORD }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -52,28 +54,85 @@ jobs:
         working-directory: ${{ steps.proj.outputs.dir }}
         run: gradle assembleDebug --stacktrace
 
-      - name: Prepare latest updater APK
+      - name: Prepare persistent release signing key
+        id: signing
         if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search'
         run: |
-          APK=$(find . -path '*/app/build/outputs/apk/debug/app-debug.apk' -print -quit)
+          if [ -z "$AI_BROWSER_SIGNING_PASSWORD" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Stable signing secret is not configured yet. Debug APK will be built, but it will NOT be published as an in-app update."
+            exit 0
+          fi
+          base64 -d signing/aibrowser-upload.jks.enc.b64 > "$RUNNER_TEMP/aibrowser-upload.jks.enc"
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in "$RUNNER_TEMP/aibrowser-upload.jks.enc" \
+            -out "$RUNNER_TEMP/aibrowser-upload.jks" \
+            -pass env:AI_BROWSER_SIGNING_PASSWORD
+          keytool -list -keystore "$RUNNER_TEMP/aibrowser-upload.jks" \
+            -storepass "$AI_BROWSER_SIGNING_PASSWORD" -alias aibrowser >/dev/null
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "keystore=$RUNNER_TEMP/aibrowser-upload.jks" >> "$GITHUB_OUTPUT"
+
+      - name: Build stable signed release APK
+        if: steps.signing.outputs.ready == 'true'
+        working-directory: ${{ steps.proj.outputs.dir }}
+        env:
+          AI_BROWSER_KEYSTORE_PATH: ${{ steps.signing.outputs.keystore }}
+        run: gradle assembleRelease --stacktrace
+
+      - name: Verify stable signing certificate
+        if: steps.signing.outputs.ready == 'true'
+        run: |
+          APK=$(find . -path '*/app/build/outputs/apk/release/app-release.apk' -print -quit)
+          test -n "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
+          ACTUAL=$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          EXPECTED="118079b156fabeae30aca7ad845f1a15cd7eea89740bc1472be2163400d40239"
+          echo "Stable signer SHA-256: $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Prepare stable updater APK
+        if: steps.signing.outputs.ready == 'true'
+        run: |
+          APK=$(find . -path '*/app/build/outputs/apk/release/app-release.apk' -print -quit)
           test -n "$APK"
           cp "$APK" AI-Browser-latest.apk
 
-      - name: Publish fixed latest release for in-app Update button
-        if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search'
+      - name: Publish stable latest release for in-app Update button
+        if: steps.signing.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view ai-browser-latest >/dev/null 2>&1; then
             gh release upload ai-browser-latest AI-Browser-latest.apk --clobber
-            gh release edit ai-browser-latest --title "AI Browser Latest" --notes "Latest verified AI Browser build. Install over the existing app to preserve Site Brain data."
+            gh release edit ai-browser-latest --title "AI Browser Latest" --notes "Stable-signed AI Browser build. Future builds use the same signing identity so Android can update in place."
           else
-            gh release create ai-browser-latest AI-Browser-latest.apk --title "AI Browser Latest" --notes "Latest verified AI Browser build. Install over the existing app to preserve Site Brain data."
+            gh release create ai-browser-latest AI-Browser-latest.apk --title "AI Browser Latest" --notes "Stable-signed AI Browser build. Future builds use the same signing identity so Android can update in place."
           fi
 
-      - name: Upload APK artifact
+      - name: Disable incompatible debug updater asset until stable signing is configured
+        if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search' && steps.signing.outputs.ready != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view ai-browser-latest >/dev/null 2>&1; then
+            gh release delete-asset ai-browser-latest AI-Browser-latest.apk -y >/dev/null 2>&1 || true
+            gh release edit ai-browser-latest --title "AI Browser Latest" --notes "Update publishing is temporarily paused while persistent Android signing is being configured. Existing Site Brain data is not affected."
+          fi
+
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: AppGate-debug-apk
           path: '**/app/build/outputs/apk/debug/app-debug.apk'
+          if-no-files-found: error
+
+      - name: Upload stable signed APK artifact
+        if: steps.signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Browser-stable-signed-apk
+          path: '**/app/build/outputs/apk/release/app-release.apk'
           if-no-files-found: error

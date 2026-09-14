@@ -44,6 +44,30 @@ object LearningReportWriter {
         return root.toString(2)
     }
 
+    fun decode(text: String): List<LearningEvent> = runCatching {
+        val root = JSONObject(text)
+        val arr = root.optJSONArray("events") ?: JSONArray()
+        buildList {
+            for (i in 0 until arr.length()) {
+                val e = arr.optJSONObject(i) ?: continue
+                add(
+                    LearningEvent(
+                        timestamp = e.optLong("timestamp", 0L),
+                        source = e.optString("source"),
+                        host = e.optString("host"),
+                        pageType = e.optString("pageType"),
+                        route = e.optString("route"),
+                        action = e.optString("action"),
+                        outcome = e.optString("outcome"),
+                        coverageBefore = e.optDouble("coverageBefore", 0.0),
+                        coverageAfter = e.optDouble("coverageAfter", 0.0),
+                        note = e.optString("note")
+                    )
+                )
+            }
+        }
+    }.getOrDefault(emptyList())
+
     private fun clean(value: String): String = value
         .replace(email, "[redacted]")
         .replace(phone, "[redacted]")

@@ -11,8 +11,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 12
-        versionName "6.4.0-sitebrain-v3-b1"
+        versionCode 13
+        versionName "6.5.0-start-learning-alpha"
     }
 
     buildTypes {

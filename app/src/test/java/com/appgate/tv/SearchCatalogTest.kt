@@ -1,5 +1,6 @@
 package com.appgate.tv
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,5 +29,11 @@ class SearchCatalogTest {
     fun marketplaceIsMarkedAsLoginCommon() {
         val marketplace = SearchCatalog.all().first { it.key == "facebook_marketplace" }
         assertTrue(marketplace.loginCommon)
+    }
+
+    @Test
+    fun facebookMarketplaceIsFirstVehicleSource() {
+        val firstVehicleSource = SearchCatalog.all().first { "vehicles" in it.categories }
+        assertEquals("facebook_marketplace", firstVehicleSource.key)
     }
 }

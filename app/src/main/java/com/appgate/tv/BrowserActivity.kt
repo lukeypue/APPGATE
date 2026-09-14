@@ -69,8 +69,11 @@ class BrowserActivity : AppCompatActivity() {
     private val results = LinkedHashMap<String, FoundResult>()
     private val failures = mutableListOf<String>()
     private val sourceCounts = linkedMapOf<String, Int>()
+    private val candidateCountsBySource = linkedMapOf<String, Int>()
     private val siteBrainStatuses = linkedMapOf<String, String>()
     private val learningEvents = mutableListOf<LearningEvent>()
+    private val loadedSourceKeys = linkedSetOf<String>()
+    private val loadedSourceIndexes = mutableSetOf<Int>()
     private var deepQueue = listOf<CandidateResult>()
     private var deepIndex = 0
 
@@ -164,21 +167,62 @@ class BrowserActivity : AppCompatActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     if (rememberSignIns) CookieManager.getInstance().flush()
-                    if (stopped || waitingForHuman) return
+                    if (stopped) return
+
+                    if (mode == ScanMode.SOURCES && index in urls.indices && loadedSourceIndexes.add(index)) {
+                        val actualUrl = url.orEmpty()
+                        val host = runCatching { Uri.parse(actualUrl).host.orEmpty() }.getOrDefault("")
+                        val marketplaceOk = currentKey() != "facebook_marketplace" || host.equals("facebook.com", true) || host.endsWith(".facebook.com", true)
+                        learningEvents += LearningEvent(
+                            timestamp = System.currentTimeMillis(),
+                            source = currentName(),
+                            host = host,
+                            pageType = "SOURCE_LOAD",
+                            route = runCatching { Uri.parse(actualUrl).path.orEmpty() }.getOrDefault(""),
+                            action = "SOURCE_PAGE_LOADED",
+                            outcome = if (marketplaceOk) "LOADED" else "WRONG_HOST",
+                            coverageBefore = 0.0,
+                            coverageAfter = 0.0,
+                            note = "url=$actualUrl"
+                        )
+                        if (marketplaceOk) {
+                            loadedSourceKeys.add(currentKey())
+                            if (currentKey() == "facebook_marketplace") {
+                                status.text = "Facebook Marketplace loaded. Checking your signed-in Marketplace page before moving on."
+                            }
+                        } else {
+                            failures.add("Facebook Marketplace: did not reach facebook.com (host=$host)")
+                        }
+                    }
+
+                    if (waitingForHuman) return
                     if (explorationInProgress) {
                         scheduleExplorationVerification(650L)
                         return
                     }
+                    val inspectDelay = if (mode == ScanMode.SOURCES && currentKey() == "facebook_marketplace") 2200L else 1100L
                     handler.postDelayed({
                         learnCurrentPage()
                         inspectCurrentPage()
-                    }, 1100L)
+                    }, inspectDelay)
                 }
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true && mode == ScanMode.SOURCES) {
                         failures.add("${currentName()}: page error")
+                        learningEvents += LearningEvent(
+                            timestamp = System.currentTimeMillis(),
+                            source = currentName(),
+                            host = runCatching { request.url.host.orEmpty() }.getOrDefault(""),
+                            pageType = "SOURCE_LOAD",
+                            route = request.url.path.orEmpty(),
+                            action = "SOURCE_PAGE_ERROR",
+                            outcome = "ERROR",
+                            coverageBefore = 0.0,
+                            coverageAfter = 0.0,
+                            note = error?.description?.toString().orEmpty()
+                        )
                     }
                 }
             }
@@ -240,6 +284,18 @@ class BrowserActivity : AppCompatActivity() {
         progress.max = names.size.coerceAtLeast(1)
         progress.progress = index
         status.text = "Searching ${index + 1} of ${urls.size}: ${currentName()}\nSite Brain is learning this website while it searches."
+        learningEvents += LearningEvent(
+            timestamp = System.currentTimeMillis(),
+            source = currentName(),
+            host = runCatching { Uri.parse(urls[index]).host.orEmpty() }.getOrDefault(""),
+            pageType = "SOURCE_LOAD",
+            route = runCatching { Uri.parse(urls[index]).path.orEmpty() }.getOrDefault(""),
+            action = "SOURCE_START",
+            outcome = "STARTED",
+            coverageBefore = 0.0,
+            coverageAfter = 0.0,
+            note = "requested=${urls[index]}"
+        )
         webView.loadUrl(urls[index])
     }
 
@@ -298,14 +354,29 @@ class BrowserActivity : AppCompatActivity() {
         """.trimIndent()
         webView.evaluateJavascript(challengeScript) { raw ->
             val text = decodeJsString(raw).lowercase()
+            val currentUrl = webView.url.orEmpty().lowercase()
             val human = listOf(
                 "captcha", "verify you are human", "security check", "checkpoint",
-                "unusual traffic", "confirm your identity", "log in to facebook", "login to facebook"
-            ).any { text.contains(it) }
+                "unusual traffic", "confirm your identity", "log in to facebook", "login to facebook",
+                "log into facebook", "log in or sign up"
+            ).any { text.contains(it) } ||
+                (currentKey() == "facebook_marketplace" && currentUrl.contains("facebook.com/login"))
             if (human) {
                 waitingForHuman = true
                 resumeButton.isEnabled = true
                 status.text = "${if (mode == ScanMode.SOURCES) currentName() else deepQueue.getOrNull(deepIndex)?.source ?: "Site"}: sign-in or human verification needed. Complete it in the page, then tap Resume.\n\nSite Brain pauses here and does not bypass security. If Remember Sign-ins is ON, the legitimate website session is kept on this device."
+                learningEvents += LearningEvent(
+                    timestamp = System.currentTimeMillis(),
+                    source = if (mode == ScanMode.SOURCES) currentName() else deepQueue.getOrNull(deepIndex)?.source ?: "Site",
+                    host = runCatching { Uri.parse(webView.url.orEmpty()).host.orEmpty() }.getOrDefault(""),
+                    pageType = "HUMAN_BOUNDARY",
+                    route = runCatching { Uri.parse(webView.url.orEmpty()).path.orEmpty() }.getOrDefault(""),
+                    action = "WAIT_FOR_HUMAN",
+                    outcome = "PAUSED",
+                    coverageBefore = 0.0,
+                    coverageAfter = 0.0,
+                    note = "Login/CAPTCHA/security boundary detected"
+                )
                 return@evaluateJavascript
             }
             if (mode == ScanMode.SOURCES) extractSourceResults() else inspectDeepListing()
@@ -363,6 +434,9 @@ class BrowserActivity : AppCompatActivity() {
                         candidates[url] = CandidateResult(sourceName, sourceKey, title, url)
                         accepted++
                     }
+                }
+                if (accepted > 0) {
+                    candidateCountsBySource[sourceName] = (candidateCountsBySource[sourceName] ?: 0) + accepted
                 }
                 if (parsed.requiredTerms.isEmpty() && accepted > 0) {
                     sourceCounts[sourceName] = (sourceCounts[sourceName] ?: 0) + accepted
@@ -551,17 +625,10 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun expectedDomainMatches(key: String, url: String): Boolean {
-        val required = when (key) {
-            "truecar" -> "truecar.com"
-            "cargurus" -> "cargurus.com"
-            "edmunds" -> "edmunds.com"
-            "autolist" -> "autolist.com"
-            "hemmings" -> "hemmings.com"
-            "cars_bids" -> "carsandbids.com"
-            "bringatrailer" -> "bringatrailer.com"
-            else -> null
-        }
-        return required == null || url.contains(required, ignoreCase = true)
+        val required = SearchCatalog.expectedHostSuffix(key) ?: return true
+        val host = runCatching { Uri.parse(url).host.orEmpty().lowercase() }.getOrDefault("")
+        val expected = required.lowercase()
+        return host == expected || host.endsWith(".$expected")
     }
 
     private fun showCombinedResults() {
@@ -587,7 +654,7 @@ class BrowserActivity : AppCompatActivity() {
             if (parsed.requiredTerms.isNotEmpty()) append("Deep match: ${parsed.requiredTerms.joinToString()}")
         }.ifBlank { "No hard constraints detected" }
         list.addView(label(constraintText, 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 6, 0, 6) })
-        list.addView(label("$verifiedCount verified · $possibleCount possible · ${candidates.size} candidates found · searched ${index.coerceAtMost(names.size)} sources", 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 0, 0, 14) })
+        list.addView(label("$verifiedCount verified · $possibleCount possible · ${candidates.size} candidates found · loaded ${loadedSourceKeys.size} of ${names.size} sources", 14f, Color.rgb(175, 195, 220), false).apply { setPadding(0, 0, 0, 14) })
 
         if (siteBrainStatuses.isNotEmpty()) {
             list.addView(label("Site Brain Learning", 17f, Color.WHITE, true))
@@ -596,9 +663,9 @@ class BrowserActivity : AppCompatActivity() {
             }
         }
 
-        if (sourceCounts.isNotEmpty()) {
+        if (candidateCountsBySource.isNotEmpty()) {
             list.addView(label("Candidates by source", 17f, Color.WHITE, true).apply { setPadding(0, 12, 0, 0) })
-            sourceCounts.forEach { (source, count) -> list.addView(label("• $source: $count", 13f, Color.rgb(150, 205, 160), false)) }
+            candidateCountsBySource.forEach { (source, count) -> list.addView(label("• $source: $count", 13f, Color.rgb(150, 205, 160), false)) }
         }
 
         if (results.isEmpty()) {
@@ -652,7 +719,7 @@ class BrowserActivity : AppCompatActivity() {
                     outcome = if (results.isEmpty()) "NO_MATCHES" else "RESULTS_FOUND",
                     coverageBefore = 0.0,
                     coverageAfter = 0.0,
-                    note = "query=${parsed.raw}; searched=${index.coerceAtMost(names.size)}/${names.size}; candidates=${candidates.size}; verified=$verifiedCount; possible=$possibleCount; sources=${names.joinToString(" | ")}"
+                    note = "query=${parsed.raw}; loaded=${loadedSourceKeys.size}/${names.size}; candidates=${candidates.size}; verified=$verifiedCount; possible=$possibleCount; loadedKeys=${loadedSourceKeys.joinToString(" | ")}; plannedSources=${names.joinToString(" | ")}"
                 )
                 failures.distinct().forEach { note ->
                     diagnosticEvents += LearningEvent(
@@ -682,7 +749,7 @@ class BrowserActivity : AppCompatActivity() {
                         note = line
                     )
                 }
-                sourceCounts.forEach { (source, count) ->
+                candidateCountsBySource.forEach { (source, count) ->
                     diagnosticEvents += LearningEvent(
                         timestamp = now,
                         source = source,
@@ -690,6 +757,20 @@ class BrowserActivity : AppCompatActivity() {
                         pageType = "CANDIDATE_COUNT",
                         route = "",
                         action = "CANDIDATES",
+                        outcome = "OBSERVED",
+                        coverageBefore = 0.0,
+                        coverageAfter = 0.0,
+                        note = "count=$count"
+                    )
+                }
+                sourceCounts.forEach { (source, count) ->
+                    diagnosticEvents += LearningEvent(
+                        timestamp = now,
+                        source = source,
+                        host = "",
+                        pageType = "VERIFIED_RESULT_COUNT",
+                        route = "",
+                        action = "VERIFIED_RESULTS",
                         outcome = "OBSERVED",
                         coverageBefore = 0.0,
                         coverageAfter = 0.0,

@@ -20,6 +20,13 @@
         </activity>
 
         <activity
+            android:name=".LearningActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:launchMode="singleTop" />
+
+        <activity
             android:name=".BrowserActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"

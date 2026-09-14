@@ -36,7 +36,7 @@ object SemanticPageSnapshot {
           }
           var selectors='a[href],button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[aria-label]';
           var elements=[];
-          Array.from(document.querySelectorAll(selectors)).slice(0,500).forEach(function(el,i){
+          Array.from(document.querySelectorAll(selectors)).slice(0,700).forEach(function(el,i){
             if(!visible(el)) return;
             var type=(el.getAttribute('type')||'').toLowerCase();
             if(type==='password'||type==='hidden'||type==='file') return;
@@ -57,14 +57,18 @@ object SemanticPageSnapshot {
               locatorHints:[cssHint(el)]
             });
           });
-          var headings=Array.from(document.querySelectorAll('h1,h2,h3,[role="heading"]')).filter(visible).map(function(h){return clean(h.innerText||h.textContent||'').slice(0,160);}).filter(Boolean).slice(0,40);
-          var body=clean((document.body&&document.body.innerText)||'').slice(0,9000);
+          var headings=Array.from(document.querySelectorAll('h1,h2,h3,[role="heading"]')).filter(visible).map(function(h){return clean(h.innerText||h.textContent||'').slice(0,160);}).filter(Boolean).slice(0,50);
+          var body=clean((document.body&&document.body.innerText)||'').slice(0,12000);
           var lower=((document.title||'')+' '+body).toLowerCase();
-          var login=/\b(log in|login|sign in|sign-in)\b/.test(lower);
+          var path=(location.pathname||'').toLowerCase();
+          var passwordFields=document.querySelectorAll('input[type="password"]').length;
+          var authPath=/(^|\/)(login|signin|sign-in|checkpoint|auth)(\/|$)/.test(path);
+          var authGate=/(log in to continue|login to continue|sign in to continue|sign up \/ log in|continue with google|continue with facebook|continue with apple)/.test(lower);
+          var login=passwordFields>0 || authPath || authGate;
           var challenge=/(captcha|verify you are human|security check|checkpoint|unusual traffic|confirm your identity)/.test(lower);
           var pageType='UNKNOWN';
           if(challenge) pageType='CHALLENGE';
-          else if(login && body.length<5000) pageType='LOGIN';
+          else if(login) pageType='LOGIN';
           else if(/search|results|listings|items found/.test(lower) && elements.filter(function(e){return !!e.href;}).length>5) pageType='RESULT_LIST';
           else if(/price|mileage|description|seller|condition/.test(lower) && headings.length>0) pageType='DETAIL';
           else if(location.pathname==='/'||location.pathname==='') pageType='HOME';
@@ -95,7 +99,7 @@ object SemanticPageSnapshot {
             host = host,
             routeSignature = normalizeRoute(url),
             title = o.optString("title"),
-            visibleTextSummary = o.optString("visibleTextSummary").take(9000),
+            visibleTextSummary = o.optString("visibleTextSummary").take(12000),
             headings = headings,
             elements = elements,
             pageType = pageType,
@@ -113,6 +117,7 @@ object SemanticPageSnapshot {
                 .replace(Regex("/+$"), "")
                 .ifBlank { "/" }
                 .replace(Regex("/[0-9]{5,}(?=/|$)"), "/:id")
+                .replace(Regex("/[0-9a-fA-F-]{24,}(?=/|$)"), "/:id")
             "${uri.host.orEmpty().lowercase()}$path"
         }.getOrElse { url.substringBefore('?').substringBefore('#').lowercase() }
     }
@@ -161,7 +166,7 @@ object PageFingerprint {
             .filter { it.length > 3 }
             .distinct()
             .sorted()
-            .take(80)
+            .take(100)
         val seed = buildString {
             append(snapshot.host.lowercase())
             append('|').append(snapshot.routeSignature.lowercase())

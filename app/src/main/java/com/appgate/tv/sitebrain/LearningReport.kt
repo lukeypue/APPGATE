@@ -21,10 +21,10 @@ object LearningReportWriter {
     private val phone = Regex("(?<!\\d)(?:\\+?1[-.\\s]?)?(?:\\(?\\d{3}\\)?[-.\\s]?)\\d{3}[-.\\s]?\\d{4}(?!\\d)")
     private val secret = Regex("(?i)\\b(cookie|session|token|password|authorization|bearer)\\b\\s*[:=]?\\s*[^\\s,;]*")
 
-    fun encode(events: List<LearningEvent>): String {
+    fun encode(events: List<LearningEvent>, reportType: String = "site_brain_search_run"): String {
         val root = JSONObject()
         root.put("schemaVersion", 1)
-        root.put("reportType", "site_brain_search_run")
+        root.put("reportType", clean(reportType))
         val arr = JSONArray()
         events.forEach { e ->
             arr.put(JSONObject().apply {

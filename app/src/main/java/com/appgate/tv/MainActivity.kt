@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v6.6 Persistent Learning"
+        title = "AI Browser v6.7 Overnight Learning"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -31,14 +31,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Site Brain v6.6 — one persistent app, a brain that keeps learning, and an Update button that installs newer engines without intentionally wiping what the brain already knows.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 16) })
+        column.addView(text("Site Brain v6.7 — persistent website learning, overnight screen-off training, watchdog auto-skip, attached JSON logs, and in-app updates that keep the brain's stored knowledge.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 16) })
 
         column.addView(Button(this).apply {
-            text = "START LEARNING"
+            text = "START OVERNIGHT LEARNING"
             textSize = 19f
-            setOnClickListener { startActivity(Intent(this@MainActivity, LearningActivity::class.java)) }
+            setOnClickListener { startActivity(Intent(this@MainActivity, OvernightLearningActivity::class.java)) }
         })
-        column.addView(text("Training now stays on one site longer, tries recovery when it reaches a shallow plateau, preserves logs across restarts, and lets you Skip Site when a login or broken page blocks progress.", 13f, Color.rgb(155, 215, 175)).apply { setPadding(4, 4, 0, 8) })
+        column.addView(text("Training stays on one site at a time. A foreground learning service and wake lock help it continue with the screen off. If there is no useful progress for 30 seconds, the current site is checkpointed and skipped so the run can keep going.", 13f, Color.rgb(155, 215, 175)).apply { setPadding(4, 4, 0, 8) })
 
         column.addView(Button(this).apply {
             text = "UPDATE AI BROWSER"
@@ -97,8 +97,8 @@ class MainActivity : AppCompatActivity() {
         column.addView(sourceSummary)
         refreshSummary()
 
-        column.addView(text("What is new in v6.6", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("• Update AI Browser downloads the fixed latest project release and opens Android's installer.\n• Learning remains one site at a time; it no longer abandons a site after the first shallow plateau.\n• Skip Site lets a long training run continue when a site is blocked or needs credentials you do not want to enter.\n• Google/Facebook/Apple OAuth handoffs open in a separate human-only sign-in screen instead of being silently blocked.\n• False login detection is stricter, so a normal page with a Sign In link should not automatically stop training.\n• Site callbacks remain session/host guarded so stale eBay/KSL/etc. events cannot poison another site's map.\n• Learning logs survive normal app restarts and identify themselves as site_brain_learning_run.\n• Consequential actions remain blocked; login, CAPTCHA and 2FA are never automated.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("What is new in v6.7", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("• START OVERNIGHT LEARNING raises the old 150-action visit limit to a much deeper 5,000-action visit budget.\n• A foreground service plus partial wake lock helps the learner continue while the screen is off or the phone is locked.\n• A 30-second no-progress watchdog checkpoints and auto-skips stuck sites so an unattended run can keep moving.\n• Share / Save Logs now sends the actual JSON file as an attachment instead of only putting JSON into message text.\n• Training remains one site at a time and retains its Site Brain store/checkpoint across normal app updates.\n• Google/Facebook/Apple OAuth handoffs remain human-only.\n• Consequential actions remain blocked; login, CAPTCHA and 2FA are never automated.\n• Update AI Browser remains the normal path for future versions.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)
@@ -158,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         val checked = BooleanArray(sources.size) { i -> prefs.getBoolean("always_${sources[i].key}", false) }
         AlertDialog.Builder(this)
             .setTitle("Always Search These Sources")
-            .setMessage("Turn on any site you want included in every Deep Search. Start Learning has its own broad training catalog.")
+            .setMessage("Turn on any site you want included in every Deep Search. Start Overnight Learning has its own broad training catalog.")
             .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
             .setPositiveButton("Save") { _, _ ->
                 val e = prefs.edit()
@@ -173,13 +173,13 @@ class MainActivity : AppCompatActivity() {
     private fun refreshSummary() {
         val prefs = getSharedPreferences("sources", MODE_PRIVATE)
         val always = sources.filter { prefs.getBoolean("always_${it.key}", false) }.map { it.name }
-        sourceSummary.text = if (always.isEmpty()) "Deep Search chooses sources automatically. Start Learning trains the broad site catalog." else "Always search: ${always.joinToString()}"
+        sourceSummary.text = if (always.isEmpty()) "Deep Search chooses sources automatically. Overnight Learning trains the broad site catalog." else "Always search: ${always.joinToString()}"
     }
 
     private fun showInfo() {
         AlertDialog.Builder(this)
             .setTitle("How Site Brain Works")
-            .setMessage("START LEARNING maps websites themselves rather than one query. It trains one site at a time, tests safe controls, verifies state changes, stores successful routes, tries recovery when it reaches a shallow plateau, then moves on only after repeated plateau/budget evidence or when you tap Skip Site.\n\nGoogle/Facebook/Apple login opens in a separate human-only sign-in screen. Site Brain never types your credentials and does not bypass CAPTCHA or 2FA.\n\nThe learning checkpoint, logs and Site Brain knowledge live separately from the APK. Use UPDATE AI BROWSER for future versions instead of uninstalling so that data stays in place.\n\nBuy, Message, Post, Delete, Checkout, payment and account changes are not automated.\n\nUse Share Learning Logs after a long run or if a site still gets stuck so the mapper can be improved from evidence.")
+            .setMessage("START OVERNIGHT LEARNING maps websites themselves rather than one query. It trains one site at a time, tests safe controls, verifies state changes, stores successful routes and checkpoints constantly. A 30-second no-progress watchdog skips blocked/stalled sites so unattended runs keep moving.\n\nA foreground service and partial wake lock help learning continue when the screen is off. Android can still impose background limits or kill an app under extreme memory/battery pressure, so the checkpoint is always saved for the next resume.\n\nGoogle/Facebook/Apple login opens in a separate human-only sign-in screen. Site Brain never types your credentials and does not bypass CAPTCHA or 2FA.\n\nThe learning checkpoint, logs and Site Brain knowledge live separately from the APK. Use UPDATE AI BROWSER for future versions instead of uninstalling so that data stays in place.\n\nBuy, Message, Post, Delete, Checkout, payment and account changes are not automated.\n\nShare / Save Logs now attaches the real JSON file so you can send it directly for analysis.")
             .setPositiveButton("Got it", null)
             .show()
     }

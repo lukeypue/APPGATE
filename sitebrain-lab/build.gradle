@@ -7,6 +7,7 @@ kotlin {
 }
 
 dependencies {
+    testImplementation project(':sitebrain-core')
     testImplementation 'junit:junit:4.13.2'
 }
 

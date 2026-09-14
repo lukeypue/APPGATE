@@ -22,7 +22,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v6.5 Start Learning"
+        title = "AI Browser v6.6 Persistent Learning"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -31,14 +31,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Site Brain v6.5 — autonomous whole-site learning is now available. Start Learning maps safe website capabilities, checkpoints progress, and keeps learned Site Brain knowledge across normal app updates.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 16) })
+        column.addView(text("Site Brain v6.6 — one persistent app, a brain that keeps learning, and an Update button that installs newer engines without intentionally wiping what the brain already knows.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 16) })
 
         column.addView(Button(this).apply {
             text = "START LEARNING"
             textSize = 19f
             setOnClickListener { startActivity(Intent(this@MainActivity, LearningActivity::class.java)) }
         })
-        column.addView(text("Press this and leave it running. Site Brain rotates through websites, tries safe unexplored controls, verifies what changed, saves checkpoints, and keeps going. If a site needs login/CAPTCHA, it pauses for you and then resumes. Use Share Learning Logs when you want me to analyze what it learned or where it got stuck.", 13f, Color.rgb(155, 215, 175)).apply { setPadding(4, 4, 0, 18) })
+        column.addView(text("Training now stays on one site longer, tries recovery when it reaches a shallow plateau, preserves logs across restarts, and lets you Skip Site when a login or broken page blocks progress.", 13f, Color.rgb(155, 215, 175)).apply { setPadding(4, 4, 0, 8) })
+
+        column.addView(Button(this).apply {
+            text = "UPDATE AI BROWSER"
+            textSize = 17f
+            setOnClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)) }
+        })
+        column.addView(text("Use this for future versions instead of uninstalling. Android installs the new APK over this app so the Site Brain store, learning checkpoint, cookies and learning logs remain in the app data area.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
 
         queryBox = EditText(this).apply {
             hint = "Deep Search: Ford Expedition under 8k under 150k miles with a 3.73 axle"
@@ -51,12 +58,11 @@ class MainActivity : AppCompatActivity() {
         }
         column.addView(queryBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        val searchButton = Button(this).apply {
+        column.addView(Button(this).apply {
             text = "Site Brain Deep Search"
             textSize = 17f
             setOnClickListener { startSearch() }
-        }
-        column.addView(searchButton)
+        })
 
         rememberSignIns = CheckBox(this).apply {
             text = "Remember site sign-ins on this device"
@@ -67,7 +73,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         column.addView(rememberSignIns)
-        column.addView(text("Recommended: ON. AI Browser does not save your password; each website's normal WebView cookies keep you signed in. Security checks are still completed by you.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 10) })
+        column.addView(text("Recommended: ON. AI Browser does not save your password; each website's normal WebView cookies keep you signed in. CAPTCHA, 2FA and credentials remain human-only.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 10) })
 
         column.addView(Button(this).apply {
             text = "Connect Facebook Marketplace (1-time sign-in)"
@@ -91,8 +97,8 @@ class MainActivity : AppCompatActivity() {
         column.addView(sourceSummary)
         refreshSummary()
 
-        column.addView(text("What is new in v6.5", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("• START LEARNING launches a dedicated mapping run that is not tied to your current search.\n• Training starts from each site's real root instead of a Ford/vehicle query.\n• Each learning site has its own session/host guard so stale callbacks from another site are ignored instead of poisoning the wrong Site Brain.\n• The run saves its current site, verified-discovery count and completed passes so later runs resume instead of starting from zero.\n• Learned website knowledge remains in the separate Site Brain store across normal APK updates.\n• Pause, Resume, Stop and Share Learning Logs are built into the training screen.\n• Consequential actions remain blocked and login/CAPTCHA/2FA stay human-only.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("What is new in v6.6", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("• Update AI Browser downloads the fixed latest project release and opens Android's installer.\n• Learning remains one site at a time; it no longer abandons a site after the first shallow plateau.\n• Skip Site lets a long training run continue when a site is blocked or needs credentials you do not want to enter.\n• Google/Facebook/Apple OAuth handoffs open in a separate human-only sign-in screen instead of being silently blocked.\n• False login detection is stricter, so a normal page with a Sign In link should not automatically stop training.\n• Site callbacks remain session/host guarded so stale eBay/KSL/etc. events cannot poison another site's map.\n• Learning logs survive normal app restarts and identify themselves as site_brain_learning_run.\n• Consequential actions remain blocked; login, CAPTCHA and 2FA are never automated.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)
@@ -152,7 +158,7 @@ class MainActivity : AppCompatActivity() {
         val checked = BooleanArray(sources.size) { i -> prefs.getBoolean("always_${sources[i].key}", false) }
         AlertDialog.Builder(this)
             .setTitle("Always Search These Sources")
-            .setMessage("Turn on any site you want included in every search. This controls Deep Search; Start Learning has its own broad training catalog.")
+            .setMessage("Turn on any site you want included in every Deep Search. Start Learning has its own broad training catalog.")
             .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
             .setPositiveButton("Save") { _, _ ->
                 val e = prefs.edit()
@@ -173,7 +179,7 @@ class MainActivity : AppCompatActivity() {
     private fun showInfo() {
         AlertDialog.Builder(this)
             .setTitle("How Site Brain Works")
-            .setMessage("START LEARNING is different from Deep Search. It maps websites themselves rather than one query. It starts from a site's root, observes safe controls, attempts unexplored safe actions, verifies the resulting state, saves what worked, then moves through the training catalog and repeats later.\n\nThe learning checkpoint and Site Brain knowledge are stored separately from the APK, so a normal app update does not intentionally erase what has already been learned.\n\nEach site's learning session is host-locked so stale callbacks from a previous site are ignored.\n\nBuy, Message, Post, Delete, Checkout, payment, account changes and similar consequential actions are not automated. Login, CAPTCHA and 2FA pause for you.\n\nUse Share Learning Logs if training appears stuck or after a long run so the mapper can be improved from evidence.")
+            .setMessage("START LEARNING maps websites themselves rather than one query. It trains one site at a time, tests safe controls, verifies state changes, stores successful routes, tries recovery when it reaches a shallow plateau, then moves on only after repeated plateau/budget evidence or when you tap Skip Site.\n\nGoogle/Facebook/Apple login opens in a separate human-only sign-in screen. Site Brain never types your credentials and does not bypass CAPTCHA or 2FA.\n\nThe learning checkpoint, logs and Site Brain knowledge live separately from the APK. Use UPDATE AI BROWSER for future versions instead of uninstalling so that data stays in place.\n\nBuy, Message, Post, Delete, Checkout, payment and account changes are not automated.\n\nUse Share Learning Logs after a long run or if a site still gets stuck so the mapper can be improved from evidence.")
             .setPositiveButton("Got it", null)
             .show()
     }

@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -31,7 +32,7 @@ class UpdateActivity : AppCompatActivity() {
             if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
             val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             downloadedUri = dm.getUriForDownloadedFile(downloadId)
-            progress.visibility = ProgressBar.GONE
+            progress.visibility = View.GONE
             if (downloadedUri == null) {
                 status.text = "Update download failed. Your learned Site Brain data was not changed."
                 downloadButton.isEnabled = true
@@ -45,6 +46,9 @@ class UpdateActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "Update AI Browser"
+        val currentVersion = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+        }.getOrDefault("unknown")
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -57,13 +61,13 @@ class UpdateActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
         })
         status = TextView(this).apply {
-            text = "Current version: ${BuildConfig.VERSION_NAME}\n\nTap Download Latest Update. The update installs over this app so the Site Brain database, checkpoints, cookies and logs are intended to remain in place. Android may ask once for permission to install updates from AI Browser."
+            text = "Current version: $currentVersion\n\nTap Download Latest Update. The update installs over this app so the Site Brain database, checkpoints, cookies and logs are intended to remain in place. Android may ask once for permission to install updates from AI Browser."
             textSize = 15f
             setTextColor(Color.rgb(185, 205, 225))
             setPadding(0, 12, 0, 18)
         }
         root.addView(status)
-        progress = ProgressBar(this).apply { visibility = ProgressBar.GONE }
+        progress = ProgressBar(this).apply { visibility = View.GONE }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         downloadButton = Button(this).apply {
             text = "DOWNLOAD LATEST UPDATE"
@@ -99,7 +103,7 @@ class UpdateActivity : AppCompatActivity() {
         val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
         downloadId = dm.enqueue(request)
         downloadButton.isEnabled = false
-        progress.visibility = ProgressBar.VISIBLE
+        progress.visibility = View.VISIBLE
         status.text = "Downloading the latest approved AI Browser build…\nSite Brain knowledge remains untouched while the engine downloads."
     }
 

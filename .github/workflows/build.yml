@@ -37,9 +37,9 @@ jobs:
             echo "dir=$(dirname "$FOUND")" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Run Site Brain Lab tests
+      - name: Run Site Brain core and lab tests
         working-directory: ${{ steps.proj.outputs.dir }}
-        run: gradle :sitebrain-lab:test --stacktrace
+        run: gradle :sitebrain-core:test :sitebrain-lab:test --stacktrace
 
       - name: Run Android unit tests
         working-directory: ${{ steps.proj.outputs.dir }}

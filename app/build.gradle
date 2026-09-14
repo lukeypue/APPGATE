@@ -3,6 +3,10 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+def stableKeystorePath = System.getenv('AI_BROWSER_KEYSTORE_PATH')
+def stableSigningPassword = System.getenv('AI_BROWSER_SIGNING_PASSWORD')
+def stableSigningEnabled = stableKeystorePath && stableSigningPassword
+
 android {
     namespace 'com.appgate.tv'
     compileSdk 34
@@ -11,12 +15,28 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 15
-        versionName "6.7.0-overnight-learning"
+        versionCode 16
+        versionName "6.8.0-stable-signing-transition"
+    }
+
+    signingConfigs {
+        stableRelease {
+            if (stableSigningEnabled) {
+                storeFile file(stableKeystorePath)
+                storePassword stableSigningPassword
+                keyAlias 'aibrowser'
+                keyPassword stableSigningPassword
+            }
+        }
     }
 
     buildTypes {
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            if (stableSigningEnabled) {
+                signingConfig signingConfigs.stableRelease
+            }
+        }
     }
 
     compileOptions {

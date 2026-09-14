@@ -25,9 +25,8 @@ object SiteExplorer {
         if (budget.actionsTaken >= budget.maxActions) return ExplorerDecision.Stop("Action budget reached")
         if (System.currentTimeMillis() - budget.startedAt >= budget.maxElapsedMs) return ExplorerDecision.Stop("Time budget reached")
 
-        val currentVisits = state.nodes.firstOrNull { it.fingerprint == snapshot.fingerprint }?.visitCount ?: 0
-        if (currentVisits > budget.maxRevisitsPerFingerprint) return ExplorerDecision.Stop("Revisit budget reached")
-
+        // SiteBrainState visitCount is lifetime knowledge, not this run's revisit count.
+        // Do not abandon a well-known state merely because it has been observed in earlier app versions.
         val alreadyTried = state.edges
             .filter { it.fromFingerprint == snapshot.fingerprint && it.successCount + it.failureCount > 0 }
             .map { normalize(it.label) to it.actionKind }
@@ -50,7 +49,7 @@ object SiteExplorer {
     }
 
     private fun score(element: SemanticElement, kind: ActionKind, unexplored: Boolean): Int {
-        var score = if (unexplored) 100 else 0
+        var score = if (unexplored) 100 else -40
         score += when (kind) {
             ActionKind.SEARCH -> 90
             ActionKind.OPEN_CATEGORY -> 80
@@ -65,7 +64,7 @@ object SiteExplorer {
             else -> 0
         }
         val text = normalize(element.label + " " + element.nearbyText.orEmpty())
-        if (listOf("privacy", "terms", "help", "about", "careers", "advertise", "cookie").any(text::contains)) score -= 120
+        if (listOf("privacy", "terms", "help", "about", "careers", "advertise", "cookie").any(text::contains)) score -= 140
         if (element.href?.contains("#") == true) score -= 10
         return score
     }

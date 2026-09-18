@@ -131,9 +131,12 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose "$APK"
-          ACTUAL=$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          CERT_OUTPUT=$("$APKSIGNER" verify --print-certs "$APK" 2>&1)
+          printf '%s\n' "$CERT_OUTPUT"
+          ACTUAL=$(printf '%s\n' "$CERT_OUTPUT" | awk -F': ' 'tolower($1) ~ /certificate sha-256 digest$/ {print $2; exit}' | tr -d ': \r' | tr '[:upper:]' '[:lower:]')
           EXPECTED="118079b156fabeae30aca7ad845f1a15cd7eea89740bc1472be2163400d40239"
           echo "Stable signer SHA-256: $ACTUAL"
+          test -n "$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
 
       - name: Prepare stable updater APK

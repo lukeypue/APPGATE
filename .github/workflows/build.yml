@@ -57,21 +57,64 @@ jobs:
       - name: Prepare persistent release signing key
         id: signing
         if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search'
+        shell: bash
         run: |
-          if [ -z "$AI_BROWSER_SIGNING_PASSWORD" ]; then
+          set +x
+          RAW="${AI_BROWSER_SIGNING_PASSWORD:-}"
+          if [ -z "$RAW" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=missing_secret" >> "$GITHUB_OUTPUT"
             echo "Stable signing secret is not configured yet. Debug APK will be built, but it will NOT be published as an in-app update."
             exit 0
           fi
+
           base64 -d signing/aibrowser-upload.jks.enc.b64 > "$RUNNER_TEMP/aibrowser-upload.jks.enc"
-          openssl enc -d -aes-256-cbc -pbkdf2 \
-            -in "$RUNNER_TEMP/aibrowser-upload.jks.enc" \
-            -out "$RUNNER_TEMP/aibrowser-upload.jks" \
-            -pass env:AI_BROWSER_SIGNING_PASSWORD
-          keytool -list -keystore "$RUNNER_TEMP/aibrowser-upload.jks" \
-            -storepass "$AI_BROWSER_SIGNING_PASSWORD" -alias aibrowser >/dev/null
+
+          trim() {
+            printf '%s' "$1" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+          }
+
+          try_password() {
+            local candidate="$1"
+            [ -n "$candidate" ] || return 1
+            rm -f "$RUNNER_TEMP/aibrowser-upload.jks"
+            if ! AI_BROWSER_CANDIDATE="$candidate" openssl enc -d -aes-256-cbc -pbkdf2               -in "$RUNNER_TEMP/aibrowser-upload.jks.enc"               -out "$RUNNER_TEMP/aibrowser-upload.jks"               -pass env:AI_BROWSER_CANDIDATE >/dev/null 2>&1; then
+              return 1
+            fi
+            if ! keytool -list -keystore "$RUNNER_TEMP/aibrowser-upload.jks"               -storepass "$candidate" -alias aibrowser >/dev/null 2>&1; then
+              return 1
+            fi
+            printf '%s' "$candidate" > "$RUNNER_TEMP/aibrowser-signing-password"
+            return 0
+          }
+
+          TRIMMED="$(trim "$RAW")"
+          WITHOUT_PREFIX="$(printf '%s' "$TRIMMED" | sed -E 's/^[[:space:]]*AI_BROWSER_SIGNING_PASSWORD[[:space:]]*=[[:space:]]*//')"
+          UNQUOTED="$(printf '%s' "$WITHOUT_PREFIX" | sed -E 's/^["'\'']//; s/["'\'']$//')"
+          EXTRACTED="$(printf '%s\n' "$RAW" | tr -d '\r' | grep -E '^[A-Za-z0-9_-]{32,}$' | head -1 || true)"
+
+          RESOLVED=""
+          for candidate in "$RAW" "$TRIMMED" "$WITHOUT_PREFIX" "$UNQUOTED" "$EXTRACTED" "_$TRIMMED" "_$WITHOUT_PREFIX" "_$UNQUOTED"; do
+            if try_password "$candidate"; then
+              RESOLVED="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$RESOLVED" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=password_mismatch" >> "$GITHUB_OUTPUT"
+            echo "Stable signing secret is present, but it does not unlock the permanent signing key."
+            echo "No incompatible update will be published."
+            exit 0
+          fi
+
+          echo "::add-mask::$RESOLVED"
+          echo "AI_BROWSER_SIGNING_PASSWORD=$RESOLVED" >> "$GITHUB_ENV"
           echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "reason=ready" >> "$GITHUB_OUTPUT"
           echo "keystore=$RUNNER_TEMP/aibrowser-upload.jks" >> "$GITHUB_OUTPUT"
+          echo "Permanent signing key prepared successfully."
 
       - name: Build stable signed release APK
         if: steps.signing.outputs.ready == 'true'
@@ -112,7 +155,7 @@ jobs:
             gh release create ai-browser-latest AI-Browser-latest.apk --title "AI Browser Latest" --notes "Stable-signed AI Browser build. Future builds use the same signing identity so Android can update in place."
           fi
 
-      - name: Disable incompatible debug updater asset until stable signing is configured
+      - name: Disable incompatible updater asset when stable signing is unavailable
         if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search' && steps.signing.outputs.ready != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -136,3 +179,10 @@ jobs:
           name: AI-Browser-stable-signed-apk
           path: '**/app/build/outputs/apk/release/app-release.apk'
           if-no-files-found: error
+
+      - name: Report stable signing setup problem
+        if: github.event_name == 'push' && github.ref == 'refs/heads/ai-browser-v6-deep-search' && steps.signing.outputs.ready != 'true'
+        run: |
+          echo "Stable signing is not ready: ${{ steps.signing.outputs.reason }}"
+          echo "Debug build and tests completed, but no update APK was published."
+          exit 1

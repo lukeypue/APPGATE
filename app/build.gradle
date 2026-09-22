@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 25
-        versionName "6.17.0-learning-target-fixes"
+        versionCode 26
+        versionName "6.18.0-smart-security-gates"
     }
 
     signingConfigs {

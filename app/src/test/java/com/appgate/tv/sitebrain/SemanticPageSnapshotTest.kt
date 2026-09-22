@@ -46,6 +46,16 @@ class SemanticPageSnapshotTest {
     }
 
     @Test
+    fun challengeDetectionRequiresStrongPageEvidence() {
+        val script = SemanticPageSnapshot.javascript()
+        assertTrue(script.contains("visiblePasswordFields"))
+        assertTrue(script.contains("challengePath"))
+        assertTrue(script.contains("challengeTitle"))
+        assertTrue(script.contains("challengePhrase && elements.length<25"))
+        assertTrue(!script.contains("var challenge=/(captcha|verify you are human|security check|checkpoint|unusual traffic|confirm your identity)/"))
+    }
+
+    @Test
     fun snapshotScriptCapturesComboboxesAndNativeChoices() {
         val script = SemanticPageSnapshot.javascript()
         assertTrue(script.contains("[role=\"combobox\"]"))

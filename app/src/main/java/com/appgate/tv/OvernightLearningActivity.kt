@@ -19,6 +19,7 @@ import android.webkit.WebViewClient
 import android.webkit.JavascriptInterface
 import android.view.View
 import android.view.MotionEvent
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -171,6 +172,9 @@ class OvernightLearningActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "Site Brain — Overnight Learning"
+        // Keep the display awake while the Overnight Learning screen is open.
+        // This is more reliable and cleaner than simulating fake touches every few minutes.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         startKeepAliveService()
 

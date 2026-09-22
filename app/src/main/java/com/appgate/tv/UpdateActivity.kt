@@ -24,6 +24,9 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.security.MessageDigest
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
 
 class UpdateActivity : AppCompatActivity() {
     private lateinit var status: TextView
@@ -33,6 +36,8 @@ class UpdateActivity : AppCompatActivity() {
     private var downloadId: Long = -1L
     private var downloadedUri: Uri? = null
     private var installerOpened = false
+    private var latestVersionCode: Long? = null
+    private var latestVersionName: String? = null
 
     private val pollDownload = object : Runnable {
         override fun run() {
@@ -53,9 +58,9 @@ class UpdateActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = "Update AI Browser"
-        val currentVersion = runCatching {
-            packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
-        }.getOrDefault("unknown")
+        val currentInfo = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
+        val currentVersion = currentInfo?.versionName.orEmpty().ifBlank { "unknown" }
+        val currentCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) currentInfo?.longVersionCode ?: 0L else @Suppress("DEPRECATION") (currentInfo?.versionCode?.toLong() ?: 0L)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -68,7 +73,7 @@ class UpdateActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
         })
         status = TextView(this).apply {
-            text = "Current version: $currentVersion\n\nTap Download Latest Update. AI Browser now verifies that the downloaded APK has the same permanent signing identity before Android is asked to update the app. Your Site Brain database, checkpoints, cookies and logs stay in the app data area during a compatible in-place update."
+            text = "Current version: $currentVersion ($currentCode)\n\nChecking whether a newer AI Browser build is available…"
             textSize = 15f
             setTextColor(Color.rgb(185, 205, 225))
             setPadding(0, 12, 0, 18)
@@ -77,9 +82,14 @@ class UpdateActivity : AppCompatActivity() {
         progress = ProgressBar(this).apply { visibility = View.GONE }
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         downloadButton = Button(this).apply {
-            text = "DOWNLOAD LATEST UPDATE"
+            text = "CHECKING FOR UPDATE…"
             textSize = 17f
-            setOnClickListener { downloadLatest() }
+            isEnabled = false
+            setOnClickListener {
+                val latest = latestVersionCode
+                if (latest != null && UpdateVersionPolicy.isUpdateAvailable(currentVersionCode(), latest)) downloadLatest()
+                else checkLatestVersion()
+            }
         }
         root.addView(downloadButton)
         root.addView(Button(this).apply {
@@ -96,7 +106,62 @@ class UpdateActivity : AppCompatActivity() {
 
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED) else registerReceiver(receiver, filter)
+        checkLatestVersion()
     }
+
+    private fun currentVersionCode(): Long {
+        val info = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull() ?: return 0L
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+    }
+
+    private fun checkLatestVersion() {
+        downloadButton.isEnabled = false
+        downloadButton.text = "CHECKING FOR UPDATE…"
+        progress.visibility = View.VISIBLE
+        val currentCode = currentVersionCode()
+        Thread {
+            val result = runCatching {
+                val connection = URL(LATEST_VERSION_URL).openConnection() as HttpURLConnection
+                connection.connectTimeout = 8_000
+                connection.readTimeout = 8_000
+                connection.useCaches = false
+                connection.setRequestProperty("Accept", "application/json")
+                try {
+                    if (connection.responseCode !in 200..299) error("HTTP " + connection.responseCode)
+                    val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                    json.getLong("versionCode") to json.optString("versionName", "latest")
+                } finally {
+                    connection.disconnect()
+                }
+            }
+            runOnUiThread {
+                progress.visibility = View.GONE
+                result.onSuccess { pair ->
+                    val code = pair.first
+                    val name = pair.second
+                    latestVersionCode = code
+                    latestVersionName = name
+                    if (UpdateVersionPolicy.isUpdateAvailable(currentCode, code)) {
+                        status.text = "Update available: $name ($code)\nInstalled: ${packageVersionName()} ($currentCode)\n\nTap Update. Your Site Brain knowledge and logs stay in place."
+                        downloadButton.text = "UPDATE TO $name"
+                        downloadButton.isEnabled = true
+                    } else {
+                        status.text = "You are on the latest version.\n\nInstalled: ${packageVersionName()} ($currentCode)\nLatest published: $name ($code)"
+                        downloadButton.text = "YOU ARE UP TO DATE"
+                        downloadButton.isEnabled = false
+                    }
+                }.onFailure {
+                    status.text = "Could not check the latest version right now. No update was started.\n\nInstalled: ${packageVersionName()} ($currentCode)\nTap below to try the check again."
+                    downloadButton.text = "CHECK AGAIN"
+                    downloadButton.isEnabled = true
+                }
+            }
+        }.start()
+    }
+
+    private fun packageVersionName(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+    }.getOrDefault("unknown")
 
     private fun downloadLatest() {
         installerOpened = false
@@ -257,5 +322,6 @@ class UpdateActivity : AppCompatActivity() {
         private const val APK_MIME = "application/vnd.android.package-archive"
         private const val UPDATE_FILE = "AI-Browser-latest.apk"
         const val LATEST_APK_URL = "https://github.com/lukeypue/APPGATE/releases/download/ai-browser-latest/AI-Browser-latest.apk"
+        const val LATEST_VERSION_URL = "https://github.com/lukeypue/APPGATE/releases/download/ai-browser-latest/latest-version.json"
     }
 }

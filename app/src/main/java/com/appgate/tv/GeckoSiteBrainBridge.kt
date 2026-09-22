@@ -16,8 +16,12 @@ class GeckoSiteBrainBridge(
         runtime.webExtensionController
             .ensureBuiltIn(EXTENSION_LOCATION, EXTENSION_ID)
             .accept({ extension ->
+                val builtIn = extension ?: run {
+                    onReady(false)
+                    return@accept
+                }
                 session.webExtensionController.setMessageDelegate(
-                    extension,
+                    builtIn,
                     object : WebExtension.MessageDelegate {
                         override fun onConnect(port: WebExtension.Port) {
                             this@GeckoSiteBrainBridge.port = port

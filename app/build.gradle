@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 30
-        versionName "6.22.0-fast-learning-webview"
+        versionCode 31
+        versionName "6.23.0-load-aware-watchdog"
     }
 
     signingConfigs {

@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 19
-        versionName "6.11.0-dropdown-filter-learning"
+        versionCode 20
+        versionName "6.12.0-site-visual-isolation"
     }
 
     signingConfigs {

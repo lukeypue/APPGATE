@@ -74,7 +74,8 @@ data class PageSnapshot(
     val pageType: PageType,
     val loginDetected: Boolean,
     val challengeDetected: Boolean,
-    val fingerprint: String
+    val fingerprint: String,
+    val gateReason: String? = null
 )
 
 data class SiteNode(

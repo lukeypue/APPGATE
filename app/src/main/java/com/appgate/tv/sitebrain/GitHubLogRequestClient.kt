@@ -62,8 +62,13 @@ object GitHubLogRequestClient {
         ZipOutputStream(out.outputStream().buffered()).use { zip ->
             add(zip, learningLog, "site_brain_learning_log.json")
             if (gapLog != null && gapLog.exists()) add(zip, gapLog, "site_brain_capability_gaps.jsonl")
+            val packageInfo = runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
+            val versionName = packageInfo?.versionName.orEmpty()
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) packageInfo?.longVersionCode ?: 0L else @Suppress("DEPRECATION") (packageInfo?.versionCode?.toLong() ?: 0L)
             val meta = JSONObject().apply {
                 put("schemaVersion", 1)
+                put("appVersionName", versionName)
+                put("appVersionCode", versionCode)
                 put("requestId", request.requestId)
                 put("requestedAt", request.requestedAt)
                 put("reason", request.reason)

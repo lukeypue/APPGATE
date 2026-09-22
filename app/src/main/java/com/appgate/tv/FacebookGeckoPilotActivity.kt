@@ -64,7 +64,7 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
         root.addView(controls)
 
         geckoView = GeckoView(this).apply {
-            setViewBackend(GeckoView.BACKEND_SURFACE_VIEW)
+            setBackgroundColor(Color.WHITE)
         }
         session = GeckoSession().apply {
             contentDelegate = object : GeckoSession.ContentDelegate {}

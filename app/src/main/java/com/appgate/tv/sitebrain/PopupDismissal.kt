@@ -10,6 +10,7 @@ object PopupDismissal {
     fun isSafeDismissLabel(label: String): Boolean {
         val text = label.lowercase().replace(Regex("\\s+"), " ").trim()
         if (text in setOf("x", "×", "✕", "✖")) return true
+        if (text.contains("skip to main content") || text.contains("skip navigation") || text.contains("skip to content")) return false
         if (blockedWords.any(text::contains)) return false
         return dismissWords.any(text::contains)
     }
@@ -39,6 +40,7 @@ object PopupDismissal {
           function safeText(t){
             t=clean(t).toLowerCase();
             if(['x','×','✕','✖'].indexOf(t)>=0) return true;
+            if(/skip to main content|skip navigation|skip to content/.test(t)) return false;
             if(/accept|agree|allow|continue|subscribe|sign in|log in|buy|checkout|purchase|pay|message|contact|submit/.test(t)) return false;
             return /close|dismiss|no thanks|not now|maybe later|skip/.test(t);
           }

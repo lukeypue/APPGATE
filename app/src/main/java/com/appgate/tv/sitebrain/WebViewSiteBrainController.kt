@@ -144,6 +144,46 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
         }
     }
 
+    fun prepareTeacherExploration(
+        observation: SiteBrainObservation,
+        targetElementId: String,
+        actionKind: ActionKind,
+        query: String?
+    ): PreparedExploration? {
+        if (pending != null) return null
+        val allowed = setOf(
+            ActionKind.SEARCH, ActionKind.NAVIGATE, ActionKind.OPEN_CATEGORY, ActionKind.APPLY_FILTER,
+            ActionKind.SORT, ActionKind.PAGINATE, ActionKind.EXPAND, ActionKind.OPEN_DETAIL,
+            ActionKind.OPEN_TAB, ActionKind.BACK
+        )
+        if (actionKind !in allowed) return null
+        val element = observation.snapshot.elements.firstOrNull { it.id == targetElementId } ?: return null
+        if (SafeActionClassifier.classify(element) != SafetyClass.SAFE) return null
+        val javascript = SafeActionExecutor.javascriptFor(element, actionKind, query, observation.snapshot.host) ?: return null
+        val id = edgeId(observation.snapshot.fingerprint, actionKind, element.label, element.href)
+        val edge = observation.brain.edges.firstOrNull { it.id == id } ?: SiteEdge(
+            id = id,
+            fromFingerprint = observation.snapshot.fingerprint,
+            toFingerprint = null,
+            actionKind = actionKind,
+            semanticIntent = "AI_TEACHER:${semanticIntent(actionKind, element.label)}",
+            label = element.label,
+            safetyClass = SafetyClass.SAFE,
+            locatorHints = element.locatorHints,
+            expectedPageType = expectedPageType(actionKind),
+            observedPostcondition = null,
+            confidence = 0.20,
+            successCount = 0,
+            failureCount = 0,
+            lastVerifiedAt = null
+        )
+        repository.recordTransition(observation.snapshot.host, observation.snapshot.fingerprint, edge, null)
+        return PreparedExploration(javascript, edge, observation.snapshot, edge.semanticIntent).also {
+            pending = it
+            state = SiteBrainControllerState.EXPLORING
+        }
+    }
+
     fun executePrepared(webView: WebView, prepared: PreparedExploration, callback: (Boolean) -> Unit) {
         if (pending?.edge?.id != prepared.edge.id) {
             callback(false)

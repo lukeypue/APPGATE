@@ -52,8 +52,16 @@ class SemanticPageSnapshotTest {
         assertTrue(script.contains("challengePath"))
         assertTrue(script.contains("challengeTitle"))
         assertTrue(script.contains("challengeWidget"))
-        assertTrue(script.contains("!richInteractivePage && (challengePath || challengeTitle || challengePhrase)"))
+        assertTrue(script.contains("dedicatedChallenge"))
+        assertTrue(script.contains("challengeWidget || dedicatedChallenge"))
         assertTrue(!script.contains("var challenge=/(captcha|verify you are human|security check|checkpoint|unusual traffic|confirm your identity)/"))
+    }
+
+    @Test
+    fun trainingLoginGateRequiresVisiblePassword() {
+        val script = SemanticPageSnapshot.javascript()
+        assertTrue(script.contains("visiblePasswordFields>0"))
+        assertTrue(script.contains("sparseGatePage"))
     }
 
     @Test

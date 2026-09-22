@@ -195,85 +195,87 @@ class OvernightLearningActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(10, 15, 23))
-            setPadding(14, 12, 14, 12)
+            setPadding(8, 6, 8, 6)
         }
         status = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 17f
+            textSize = 14f
             text = "Preparing overnight Site Brain learning…"
         }
         counters = TextView(this).apply {
             setTextColor(Color.rgb(145, 205, 165))
-            textSize = 13f
-            setPadding(0, 6, 0, 8)
+            textSize = 11f
+            setPadding(0, 2, 0, 3)
         }
         root.addView(status)
         root.addView(counters)
 
-        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        pauseButton = Button(this).apply {
-            text = "Pause"
-            setOnClickListener { pauseLearning() }
+        fun compact(button: Button): Button = button.apply {
+            textSize = 11f
+            minHeight = 0
+            minimumHeight = 0
+            setPadding(6, 2, 6, 2)
         }
-        resumeButton = Button(this).apply {
-            text = "Resume"
+
+        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        pauseButton = compact(Button(this).apply {
+            text = "PAUSE"
+            setOnClickListener { pauseLearning() }
+        })
+        resumeButton = compact(Button(this).apply {
+            text = "RESUME"
             isEnabled = false
             setOnClickListener { resumeLearning() }
-        }
-        skipButton = Button(this).apply {
-            text = "Skip Site"
+        })
+        skipButton = compact(Button(this).apply {
+            text = "SKIP"
             setOnClickListener { skipCurrentSite(auto = false) }
-        }
-        val stopButton = Button(this).apply {
-            text = "Stop"
+        })
+        val stopButton = compact(Button(this).apply {
+            text = "STOP"
             setOnClickListener { stopLearning() }
-        }
+        })
         row1.addView(pauseButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         row1.addView(resumeButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         row1.addView(skipButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         row1.addView(stopButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row1)
 
-        teachButton = Button(this).apply {
-            text = "TEACH ME"
-            setOnClickListener { toggleTeachMode() }
-        }
-        root.addView(teachButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        aiTeacherButton = Button(this).apply {
-            setOnClickListener { showAiTeacherKeyDialog() }
-        }
-        root.addView(aiTeacherButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        updateAiTeacherButton()
-
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row2.addView(Button(this).apply {
+        teachButton = compact(Button(this).apply {
+            text = "TEACH"
+            setOnClickListener { toggleTeachMode() }
+        })
+        aiTeacherButton = compact(Button(this).apply {
+            setOnClickListener { showAiTeacherKeyDialog() }
+        })
+        row2.addView(teachButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row2.addView(aiTeacherButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row2.addView(compact(Button(this).apply {
             text = "UPDATE"
             setOnClickListener { startActivity(Intent(this@OvernightLearningActivity, UpdateActivity::class.java)) }
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        row2.addView(Button(this).apply {
-            text = "SHARE / SAVE LOGS"
+        }), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row2.addView(compact(Button(this).apply {
+            text = "LOGS"
             setOnClickListener { shareLogs() }
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f))
+        }), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row2)
-        root.addView(Button(this).apply {
-            text = "SHARE AI GAP LOG"
+        updateAiTeacherButton()
+
+        val row3 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row3.addView(compact(Button(this).apply {
+            text = "AI GAPS"
             setOnClickListener { shareGapLog() }
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        requestedLogsButton = Button(this).apply {
-            text = "CHECK GITHUB LOG REQUEST"
+        }), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        requestedLogsButton = compact(Button(this).apply {
+            text = "GITHUB LOGS"
             setOnClickListener {
                 val request = pendingGitHubLogRequest
                 if (request != null) shareRequestedLogs(request) else checkGitHubLogRequest(forceToast = true)
             }
-        }
-        root.addView(requestedLogsButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        root.addView(TextView(this).apply {
-            setTextColor(Color.rgb(170, 185, 205))
-            textSize = 12f
-            text = "Overnight mode uses Fast Learning display: product/ad images are not downloaded, while page text, scripts, links, filters, forms, and controls still load for Site Brain. This reduces bandwidth and rendering work on heavy retail sites. It keeps a foreground learning service and CPU wake lock active, checkpoints constantly, and auto-skips a site/state after 30 seconds without useful progress. Login/CAPTCHA/2FA remain human-only."
-            setPadding(0, 6, 0, 10)
         })
+        row3.addView(requestedLogsButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(row3)
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.WHITE)
@@ -573,7 +575,7 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun updateAiTeacherButton() {
         if (!::aiTeacherButton.isInitialized) return
-        aiTeacherButton.text = if (AiTeacherKeyStore.isConfigured(this)) "AI TEACHER: ON" else "SET AI TEACHER KEY"
+        aiTeacherButton.text = if (AiTeacherKeyStore.isConfigured(this)) "AI: ON" else "AI KEY"
     }
 
     private fun showAiTeacherKeyDialog() {
@@ -1138,7 +1140,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                         return@onSuccess
                     }
                     pendingGitHubLogRequest = request
-                    requestedLogsButton.text = "SEND BOTH REQUESTED LOGS"
+                    requestedLogsButton.text = "SEND LOGS"
                     record("GITHUB_LOG_REQUEST", "RECEIVED", activeSite?.expectedHost.orEmpty(), "", request.requestId)
                     Toast.makeText(this, "GitHub requested both Site Brain logs. Tap SEND BOTH REQUESTED LOGS.", Toast.LENGTH_LONG).show()
                 }
@@ -1170,7 +1172,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         }
         GitHubLogRequestClient.markHandled(this, request)
         pendingGitHubLogRequest = null
-        requestedLogsButton.text = "CHECK GITHUB LOG REQUEST"
+        requestedLogsButton.text = "GITHUB LOGS"
         record("GITHUB_LOG_REQUEST", "BUNDLED", activeSite?.expectedHost.orEmpty(), "", request.requestId)
         startActivity(Intent.createChooser(intent, "Send both requested logs"))
     }

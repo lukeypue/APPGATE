@@ -1,0 +1,24 @@
+{
+  "manifest_version": 2,
+  "name": "AI Browser Site Brain Bridge",
+  "version": "1.0",
+  "description": "First-party bridge between Gecko web content and the AI Browser Site Brain.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sitebrain@aibrowser.local"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["sitebrain.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": [
+    "nativeMessaging",
+    "nativeMessagingFromContent",
+    "geckoViewAddons"
+  ]
+}

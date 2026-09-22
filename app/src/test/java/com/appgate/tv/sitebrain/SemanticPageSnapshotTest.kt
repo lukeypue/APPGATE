@@ -69,7 +69,8 @@ class SemanticPageSnapshotTest {
         val script = SemanticPageSnapshot.javascript()
         assertTrue(script.contains("richInteractivePage"))
         assertTrue(script.contains("challengeWidget"))
-        assertTrue(script.contains("!richInteractivePage"))
+        assertTrue(script.contains("sparseGatePage"))
+        assertTrue(script.contains("dedicatedChallenge"))
     }
 
     @Test

@@ -151,7 +151,7 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
         }
         webView.evaluateJavascript(prepared.javascript) { raw ->
             val response = decodeJsString(raw).uppercase()
-            val accepted = response.contains("CLICKED") || response.contains("FILLED") || response.contains("NAVIGATE") || prepared.javascript.startsWith("window.location.href=")
+            val accepted = response.contains("CLICKED") || response.contains("FILLED") || response.contains("SELECTED") || response.contains("NAVIGATE") || prepared.javascript.startsWith("window.location.href=")
             if (!accepted) {
                 repository.markFailure(prepared.before.host, prepared.edge.id)
                 pending = null

@@ -41,6 +41,7 @@ import com.appgate.tv.sitebrain.SiteEdge
 import com.appgate.tv.sitebrain.SafeActionClassifier
 import com.appgate.tv.sitebrain.ActionKind
 import com.appgate.tv.sitebrain.SafetyClass
+import com.appgate.tv.sitebrain.CapabilityGapLogger
 import org.json.JSONObject
 import java.io.File
 
@@ -54,6 +55,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private lateinit var teachButton: Button
     private lateinit var controller: WebViewSiteBrainController
     private lateinit var brainRepository: SiteBrainRepository
+    private lateinit var gapLogger: CapabilityGapLogger
 
     private val handler = Handler(Looper.getMainLooper())
     private val sites = LearningSiteCatalog.defaultSites()
@@ -90,6 +92,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                 val stalled = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt)
                 if (LearningRuntimePolicy.shouldAutoSkip(stalled, waitingForHuman)) {
                     val site = activeSite
+                    gapLogger.record("STALLED", site?.name.orEmpty(), site?.expectedHost.orEmpty(), "", "No useful progress for ${stalled / 1000}s before auto-skip")
                     record(
                         "WATCHDOG_AUTO_SKIP",
                         "SKIPPED",
@@ -114,6 +117,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         val brainPrefs = getSharedPreferences("site_brain_knowledge", MODE_PRIVATE)
         brainRepository = SiteBrainRepository(SharedPreferencesSiteBrainStore(brainPrefs))
         controller = WebViewSiteBrainController(brainRepository)
+        gapLogger = CapabilityGapLogger(this)
 
         val runPrefs = getSharedPreferences("site_brain_learning_run", MODE_PRIVATE)
         tracker = LearningProgressTracker(
@@ -266,6 +270,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                     val host = request.url.host.orEmpty()
                     if (!guard.accept(activeSessionId, host)) return
                     webView.visibility = View.INVISIBLE
+                    gapLogger.record("SITE_LOAD_ERROR", activeSite?.name.orEmpty(), host, request.url.path.orEmpty(), error?.description?.toString().orEmpty())
                     record("PAGE_ERROR", "ERROR", host, request.url.path.orEmpty(), error?.description?.toString().orEmpty())
                     status.text = "Learning ${activeSite?.name ?: "site"}\nSite page did not load; retrying without showing stale content."
                     handler.postDelayed({ recoverOrMove("page error") }, 1200L)
@@ -410,6 +415,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                 controller.executePrepared(webView, prepared) { accepted ->
                     if (!accepted) {
                         actionInFlight = false
+                        gapLogger.record("ACTION_REJECTED", site.name, actualHost, observation.snapshot.routeSignature, prepared.semanticIntent)
                         record(prepared.semanticIntent, "REJECTED", actualHost, observation.snapshot.routeSignature, "executor did not accept action")
                         handler.postDelayed({ mapAndAct() }, 650L)
                     } else {
@@ -424,6 +430,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         webView.evaluateJavascript(PopupDismissal.javascript()) { raw ->
             val decoded = raw.orEmpty().trim().trim('"')
             if (decoded.startsWith("DISMISSED:")) {
+                gapLogger.record("POPUP_DISMISSED", activeSite?.name.orEmpty(), activeSite?.expectedHost.orEmpty(), "", decoded.removePrefix("DISMISSED:"))
                 record("POPUP_DISMISS", "VERIFIED", activeSite?.expectedHost.orEmpty(), "", decoded.removePrefix("DISMISSED:"))
                 touchProgress()
                 handler.postDelayed({ mapAndAct() }, 450L)
@@ -557,12 +564,14 @@ class OvernightLearningActivity : AppCompatActivity() {
         tracker?.recordVerified()
         verifiedThisSite++
         touchProgress()
+        gapLogger.record("RESOLVED_BY_HUMAN", activeSite?.name.orEmpty(), host, before.routeSignature, "${kind.name}:${element.label}", resolvedByHuman = true)
         record("HUMAN_DEMO", "LEARNED", host, before.routeSignature, "${kind.name}:${element.label}")
         handler.postDelayed({ refreshTeachingSnapshot() }, 700L)
     }
 
     private fun handlePlateau(host: String, route: String) {
         consecutivePlateaus++
+        if (consecutivePlateaus >= 3) gapLogger.record("PLATEAU", activeSite?.name.orEmpty(), host, route, "Repeated plateau $consecutivePlateaus")
         record("SITE_PLATEAU", "CHECKPOINTED", host, route, "Plateau $consecutivePlateaus; recovery continues until watchdog/budget decides to move on")
         saveCheckpoint()
         controller.markHumanResume()

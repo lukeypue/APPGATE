@@ -12,6 +12,9 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.text.InputType
+import android.widget.Toast
+import com.appgate.tv.sitebrain.AiTeacherKeyStore
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -22,7 +25,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "AI Browser v6.7 Overnight Learning"
+        val versionName = runCatching { packageManager.getPackageInfo(packageName, 0).versionName.orEmpty() }.getOrDefault("unknown")
+        title = "AI Browser $versionName"
 
         val root = ScrollView(this).apply { setBackgroundColor(Color.rgb(13, 18, 28)) }
         val column = LinearLayout(this).apply {
@@ -31,7 +35,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         column.addView(text("AI Browser", 30f, Color.WHITE, true))
-        column.addView(text("Site Brain v6.7 — persistent website learning, overnight screen-off training, watchdog auto-skip, attached JSON logs, and in-app updates that keep the brain's stored knowledge.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 16) })
+        column.addView(text("Site Brain $versionName — persistent website learning, AI Teacher support, overnight screen-off training, watchdog auto-skip, attached JSON logs, and in-app updates that keep the brain's stored knowledge.", 16f, Color.rgb(190, 205, 225)).apply { setPadding(0, 8, 0, 16) })
 
         column.addView(Button(this).apply {
             text = "START OVERNIGHT LEARNING"
@@ -46,6 +50,13 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)) }
         })
         column.addView(text("Use this for future versions instead of uninstalling. Android installs the new APK over this app so the Site Brain store, learning checkpoint, cookies and learning logs remain in the app data area.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
+
+        column.addView(Button(this).apply {
+            text = if (AiTeacherKeyStore.isConfigured(this@MainActivity)) "AI TEACHER KEY: SET" else "SET AI TEACHER KEY"
+            textSize = 17f
+            setOnClickListener { showAiTeacherKeyDialog(this) }
+        })
+        column.addView(text("AI Teacher is only used when the normal Site Brain gets stuck. The key is encrypted on this phone with Android Keystore.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
 
         queryBox = EditText(this).apply {
             hint = "Deep Search: Ford Expedition under 8k under 150k miles with a 3.73 axle"
@@ -97,11 +108,44 @@ class MainActivity : AppCompatActivity() {
         column.addView(sourceSummary)
         refreshSummary()
 
-        column.addView(text("What is new in v6.7", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("• START OVERNIGHT LEARNING raises the old 150-action visit limit to a much deeper 5,000-action visit budget.\n• A foreground service plus partial wake lock helps the learner continue while the screen is off or the phone is locked.\n• A 30-second no-progress watchdog checkpoints and auto-skips stuck sites so an unattended run can keep moving.\n• Share / Save Logs now sends the actual JSON file as an attachment instead of only putting JSON into message text.\n• Training remains one site at a time and retains its Site Brain store/checkpoint across normal app updates.\n• Google/Facebook/Apple OAuth handoffs remain human-only.\n• Consequential actions remain blocked; login, CAPTCHA and 2FA are never automated.\n• Update AI Browser remains the normal path for future versions.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("What is new in $versionName", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
+        column.addView(text("• AI Teacher can be configured directly from the main screen.\n• TEACH ME mode lets you demonstrate difficult safe controls.\n• Safe popup dismissal helps clear blocking ads and overlays.\n• Dropdown/filter learning was expanded for make/model/year-style controls.\n• Learning logs can retain up to 50,000 events, plus a separate AI capability-gap log.\n• The updater now checks version numbers and says when you are already up to date.\n• Login, CAPTCHA, 2FA, payment and destructive actions remain human-only.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)
+    }
+
+    private fun showAiTeacherKeyDialog(button: Button) {
+        val input = EditText(this).apply {
+            hint = "OpenAI API key"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val builder = AlertDialog.Builder(this)
+            .setTitle("AI Teacher")
+            .setMessage("Paste your OpenAI API key here. It is encrypted with Android Keystore and stored only on this phone.")
+            .setView(input)
+            .setPositiveButton("SAVE") { _, _ ->
+                val key = input.text?.toString().orEmpty().trim()
+                if (key.isBlank()) return@setPositiveButton
+                runCatching { AiTeacherKeyStore.save(this, key) }
+                    .onSuccess {
+                        button.text = "AI TEACHER KEY: SET"
+                        Toast.makeText(this, "AI Teacher key saved.", Toast.LENGTH_SHORT).show()
+                    }
+                    .onFailure {
+                        Toast.makeText(this, "Could not save the key.", Toast.LENGTH_LONG).show()
+                    }
+            }
+            .setNegativeButton("CANCEL", null)
+        if (AiTeacherKeyStore.isConfigured(this)) {
+            builder.setNeutralButton("CLEAR KEY") { _, _ ->
+                AiTeacherKeyStore.clear(this)
+                button.text = "SET AI TEACHER KEY"
+                Toast.makeText(this, "AI Teacher key cleared.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        builder.show()
     }
 
     private fun startSearch() {

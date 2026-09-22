@@ -16,12 +16,17 @@ import android.text.InputType
 import android.widget.Toast
 import com.appgate.tv.sitebrain.AiTeacherKeyStore
 import androidx.appcompat.app.AppCompatActivity
+import android.os.Build
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var queryBox: EditText
     private lateinit var sourceSummary: TextView
     private lateinit var rememberSignIns: CheckBox
     private val sources = SearchCatalog.all()
+    private var automaticUpdateCheckStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +55,17 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)) }
         })
         column.addView(text("Use this for future versions instead of uninstalling. Android installs the new APK over this app so the Site Brain store, learning checkpoint, cookies and learning logs remain in the app data area.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
+
+        column.addView(CheckBox(this).apply {
+            text = "Automatically download verified AI Browser updates"
+            setTextColor(Color.WHITE)
+            isChecked = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("auto_updates", true)
+            setOnCheckedChangeListener { _, checked ->
+                getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("auto_updates", checked).apply()
+                if (checked) checkForAutomaticUpdate()
+            }
+        })
+        column.addView(text("When a newer permanently signed build is published, AI Browser can download it automatically. Android still requires its normal Install confirmation for a sideloaded app.", 12f, Color.rgb(150, 175, 200)).apply { setPadding(4, 0, 0, 14) })
 
         column.addView(Button(this).apply {
             text = if (AiTeacherKeyStore.isConfigured(this@MainActivity)) "AI TEACHER KEY: SET" else "SET AI TEACHER KEY"
@@ -113,6 +129,44 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(column)
         setContentView(root)
+
+        if (getSharedPreferences("settings", MODE_PRIVATE).getBoolean("auto_updates", true)) {
+            checkForAutomaticUpdate()
+        }
+    }
+
+    private fun currentVersionCode(): Long {
+        val info = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull() ?: return 0L
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+    }
+
+    private fun checkForAutomaticUpdate() {
+        if (automaticUpdateCheckStarted) return
+        automaticUpdateCheckStarted = true
+        val currentCode = currentVersionCode()
+        Thread {
+            val latestCode = runCatching {
+                val connection = URL(UpdateActivity.LATEST_VERSION_URL).openConnection() as HttpURLConnection
+                connection.connectTimeout = 8_000
+                connection.readTimeout = 8_000
+                connection.useCaches = false
+                try {
+                    if (connection.responseCode !in 200..299) error("HTTP ${connection.responseCode}")
+                    JSONObject(connection.inputStream.bufferedReader().use { it.readText() }).getLong("versionCode")
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+            if (latestCode != null && UpdateVersionPolicy.isUpdateAvailable(currentCode, latestCode)) {
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        startActivity(Intent(this, UpdateActivity::class.java).apply {
+                            putExtra(UpdateActivity.EXTRA_AUTO_DOWNLOAD, true)
+                        })
+                    }
+                }
+            }
+        }.start()
     }
 
     private fun showAiTeacherKeyDialog(button: Button) {

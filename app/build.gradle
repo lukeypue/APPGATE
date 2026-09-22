@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 37
-        versionName "6.29.0-relaxed-training-gates"
+        versionCode 38
+        versionName "6.30.0-human-clearance-reuse"
     }
 
     signingConfigs {

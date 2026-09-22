@@ -34,6 +34,13 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
 
         <activity
+            android:name=".FacebookGeckoPilotActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:launchMode="singleTop" />
+
+        <activity
             android:name=".OvernightLearningActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"

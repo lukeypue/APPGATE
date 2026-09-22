@@ -54,7 +54,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 17f
             setOnClickListener { startActivity(Intent(this@MainActivity, FacebookGeckoPilotActivity::class.java)) }
         })
-        column.addView(text("New engine test: Facebook Marketplace runs in bundled Gecko with its own mini brain while the regular 31-site learner remains available for comparison.", 12f, Color.rgb(155, 215, 175)).apply { setPadding(4, 2, 0, 12) })
+        column.addView(text("Facebook Marketplace is isolated in bundled Gecko with its own mini brain. The regular learner now focuses only on hard-to-search sources instead of wasting training time on normal public retailer sites.", 12f, Color.rgb(155, 215, 175)).apply { setPadding(4, 2, 0, 12) })
 
         column.addView(Button(this).apply {
             text = "UPDATE AI BROWSER"
@@ -263,7 +263,7 @@ class MainActivity : AppCompatActivity() {
         val checked = BooleanArray(sources.size) { i -> prefs.getBoolean("always_${sources[i].key}", false) }
         AlertDialog.Builder(this)
             .setTitle("Always Search These Sources")
-            .setMessage("Turn on any site you want included in every Deep Search. Start Overnight Learning has its own broad training catalog.")
+            .setMessage("Turn on any dedicated hard-site source you want included in every Deep Search. Normal retailer/web results will come from the later general web aggregation layer.")
             .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
             .setPositiveButton("Save") { _, _ ->
                 val e = prefs.edit()
@@ -278,13 +278,13 @@ class MainActivity : AppCompatActivity() {
     private fun refreshSummary() {
         val prefs = getSharedPreferences("sources", MODE_PRIVATE)
         val always = sources.filter { prefs.getBoolean("always_${it.key}", false) }.map { it.name }
-        sourceSummary.text = if (always.isEmpty()) "Deep Search chooses sources automatically. Overnight Learning trains the broad site catalog." else "Always search: ${always.joinToString()}"
+        sourceSummary.text = if (always.isEmpty()) "Deep Search currently uses the dedicated hard-site sources. General web/retailer results will be added later through the Google/web aggregation layer." else "Always search: ${always.joinToString()}"
     }
 
     private fun showInfo() {
         AlertDialog.Builder(this)
             .setTitle("How Site Brain Works")
-            .setMessage("START OVERNIGHT LEARNING maps websites themselves rather than one query. It trains one site at a time, tests safe controls, verifies state changes, stores successful routes and checkpoints constantly. A 30-second no-progress watchdog skips blocked/stalled sites so unattended runs keep moving.\n\nA foreground service and partial wake lock help learning continue when the screen is off. Android can still impose background limits or kill an app under extreme memory/battery pressure, so the checkpoint is always saved for the next resume.\n\nGoogle/Facebook/Apple login opens in a separate human-only sign-in screen. Site Brain never types your credentials and does not bypass CAPTCHA or 2FA.\n\nThe learning checkpoint, logs and Site Brain knowledge live separately from the APK. Use UPDATE AI BROWSER for future versions instead of uninstalling so that data stays in place.\n\nBuy, Message, Post, Delete, Checkout, payment and account changes are not automated.\n\nShare / Save Logs now attaches the real JSON file so you can send it directly for analysis.")
+            .setMessage("START OVERNIGHT LEARNING maps only the hard-to-search websites that need dedicated site knowledge rather than wasting training time on normal public web retailers. It trains one site at a time, tests safe controls, verifies state changes, stores successful routes and checkpoints constantly. A 30-second no-progress watchdog skips blocked/stalled sites so unattended runs keep moving.\n\nA foreground service and partial wake lock help learning continue when the screen is off. Android can still impose background limits or kill an app under extreme memory/battery pressure, so the checkpoint is always saved for the next resume.\n\nGoogle/Facebook/Apple login opens in a separate human-only sign-in screen. Site Brain never types your credentials and does not bypass CAPTCHA or 2FA.\n\nThe learning checkpoint, logs and Site Brain knowledge live separately from the APK. Use UPDATE AI BROWSER for future versions instead of uninstalling so that data stays in place.\n\nBuy, Message, Post, Delete, Checkout, payment and account changes are not automated.\n\nShare / Save Logs now attaches the real JSON file so you can send it directly for analysis.")
             .setPositiveButton("Got it", null)
             .show()
     }

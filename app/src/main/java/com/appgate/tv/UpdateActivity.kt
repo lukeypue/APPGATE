@@ -38,6 +38,7 @@ class UpdateActivity : AppCompatActivity() {
     private var installerOpened = false
     private var latestVersionCode: Long? = null
     private var latestVersionName: String? = null
+    private var autoDownloadStarted = false
 
     private val pollDownload = object : Runnable {
         override fun run() {
@@ -145,6 +146,10 @@ class UpdateActivity : AppCompatActivity() {
                         status.text = "Update available: $name ($code)\nInstalled: ${packageVersionName()} ($currentCode)\n\nTap Update. Your Site Brain knowledge and logs stay in place."
                         downloadButton.text = "UPDATE TO $name"
                         downloadButton.isEnabled = true
+                        if (intent.getBooleanExtra(EXTRA_AUTO_DOWNLOAD, false) && !autoDownloadStarted) {
+                            autoDownloadStarted = true
+                            downloadLatest()
+                        }
                     } else {
                         status.text = "You are on the latest version.\n\nInstalled: ${packageVersionName()} ($currentCode)\nLatest published: $name ($code)"
                         downloadButton.text = "YOU ARE UP TO DATE"
@@ -321,6 +326,7 @@ class UpdateActivity : AppCompatActivity() {
     companion object {
         private const val APK_MIME = "application/vnd.android.package-archive"
         private const val UPDATE_FILE = "AI-Browser-latest.apk"
+        const val EXTRA_AUTO_DOWNLOAD = "auto_download_update"
         const val LATEST_APK_URL = "https://github.com/lukeypue/APPGATE/releases/download/ai-browser-latest/AI-Browser-latest.apk"
         const val LATEST_VERSION_URL = "https://github.com/lukeypue/APPGATE/releases/download/ai-browser-latest/latest-version.json"
     }

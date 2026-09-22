@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 38
-        versionName "6.30.0-human-clearance-reuse"
+        versionCode 39
+        versionName "6.31.0-smart-page-settle"
     }
 
     signingConfigs {

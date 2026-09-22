@@ -1,7 +1,10 @@
 {
   "schemaVersion": 1,
-  "requestId": "initial",
-  "requestedAt": "2026-09-22T05:45:00Z",
-  "include": ["site_brain_learning_log.json", "site_brain_capability_gaps.jsonl"],
-  "reason": "Initial control-plane marker. The app should ignore requestId=initial."
+  "requestId": "review-2026-09-22-0550",
+  "requestedAt": "2026-09-22T05:50:00Z",
+  "include": [
+    "site_brain_learning_log.json",
+    "site_brain_capability_gaps.jsonl"
+  ],
+  "reason": "Review both live learning streams after AI Teacher activation, varied autonomous searches, popup fixes, and capability-gap logging. Check target alignment, repeated loops, filters/dropdowns, AI errors, and useful verified progress."
 }

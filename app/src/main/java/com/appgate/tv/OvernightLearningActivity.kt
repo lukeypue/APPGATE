@@ -287,6 +287,8 @@ class OvernightLearningActivity : AppCompatActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
+            settings.databaseEnabled = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) settings.offscreenPreRaster = true
             // Overnight learning does not need product photos, hero art, or ad images.
             // Skipping them saves bandwidth/CPU while preserving DOM text, links, filters,
             // forms, scripts, and the controls Site Brain actually learns.
@@ -406,19 +408,43 @@ class OvernightLearningActivity : AppCompatActivity() {
                     var h=b?b.scrollHeight:0;
                     var n=b?b.querySelectorAll('a,button,input,select,textarea,[role]').length:0;
                     var t=b?((b.innerText||'').length):0;
-                    return ready+'|'+h+'|'+n+'|'+t;
+                    var r=(window.performance&&performance.getEntriesByType)?performance.getEntriesByType('resource').length:0;
+                    function vis(el){
+                        if(!el) return false;
+                        var s=getComputedStyle(el),x=el.getBoundingClientRect();
+                        return s.display!=='none'&&s.visibility!=='hidden'&&x.width>0&&x.height>0;
+                    }
+                    var busy=Array.from(d.querySelectorAll(
+                        '[aria-busy="true"],[role="progressbar"],progress,[data-loading="true"],.loading,.spinner,.skeleton'
+                    )).filter(vis).length;
+                    return ready+'|'+h+'|'+n+'|'+t+'|'+r+'|'+busy;
                 })();""".trimIndent()
             ) { raw ->
                 if (generation != pageSettleGeneration || stopped || userPaused || authScreenOpen) return@evaluateJavascript
-                val signature = raw.orEmpty()
-                val complete = signature.contains("complete|")
-                if (signature != lastSignature && lastSignature.isNotBlank()) touchProgress()
-                stableSamples = if (signature == lastSignature && complete) stableSamples + 1 else 0
+                val signature = raw.orEmpty().trim('"')
+                val parts = signature.split('|')
+                val complete = parts.firstOrNull() == "complete"
+                val busy = parts.lastOrNull()?.toIntOrNull() ?: 0
+                val unchanged = signature == lastSignature && lastSignature.isNotBlank()
+
+                if (!unchanged && lastSignature.isNotBlank()) touchProgress()
+                stableSamples = if (unchanged && complete && busy == 0) stableSamples + 1 else 0
                 lastSignature = signature
+
                 val elapsed = System.currentTimeMillis() - startedAt
-                if ((elapsed >= 1_200L && stableSamples >= 1) || elapsed >= 8_000L) {
+                val settled = elapsed >= 2_400L && stableSamples >= 3
+                val hardCap = elapsed >= 12_000L
+
+                if (settled || hardCap) {
                     pageSettling = false
                     touchProgress()
+                    record(
+                        "PAGE_SETTLE",
+                        if (settled) "STABLE" else "TIMEOUT",
+                        activeSite?.expectedHost.orEmpty(),
+                        lastObservedSnapshot?.routeSignature.orEmpty(),
+                        "waited=" + elapsed + "ms; stableSamples=" + stableSamples + "; busy=" + busy
+                    )
                     onReady()
                 } else {
                     handler.postDelayed({ poll() }, 450L)

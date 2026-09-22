@@ -15,5 +15,7 @@ class PopupDismissalTest {
         assertFalse(PopupDismissal.isSafeDismissLabel("Accept all"))
         assertFalse(PopupDismissal.isSafeDismissLabel("Continue"))
         assertFalse(PopupDismissal.isSafeDismissLabel("Subscribe now"))
+        assertFalse(PopupDismissal.isSafeDismissLabel("Skip to main content"))
+        assertFalse(PopupDismissal.isSafeDismissLabel("Skip navigation"))
     }
 }

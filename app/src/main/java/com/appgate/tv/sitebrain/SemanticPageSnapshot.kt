@@ -69,13 +69,17 @@ object SemanticPageSnapshot {
           var lower=((document.title||'')+' '+body).toLowerCase();
           var path=(location.pathname||'').toLowerCase();
           var visiblePasswordFields=Array.from(document.querySelectorAll('input[type="password"]')).filter(visible).length;
+          var richInteractivePage=elements.length>=25 && body.length>=500;
           var authPath=/(^|\/)(login|signin|sign-in|checkpoint|auth)(\/|$)/.test(path);
           var authGate=/(log in to continue|login to continue|sign in to continue|sign up \/ log in|continue with google|continue with facebook|continue with apple)/.test(lower);
-          var login=visiblePasswordFields>0 || authPath || (authGate && elements.length<25);
+          var login=visiblePasswordFields>0 || (!richInteractivePage && (authPath || authGate));
           var challengePath=/(^|\/)(captcha|challenge|checkpoint|verify|security-check)(\/|$)/.test(path);
           var challengeTitle=/(captcha|verify you are human|security check|unusual traffic|confirm your identity|are you a robot)/.test((document.title||'').toLowerCase());
           var challengePhrase=/(verify you are human|unusual traffic|confirm your identity|are you a robot|complete the captcha|enter the characters you see)/.test(lower);
-          var challenge=challengePath || challengeTitle || (challengePhrase && elements.length<25);
+          var challengeWidget=Array.from(document.querySelectorAll(
+            'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="turnstile"],[class*="recaptcha"],[class*="hcaptcha"],[class*="cf-turnstile"],[data-sitekey]'
+          )).some(visible);
+          var challenge=challengeWidget || (!richInteractivePage && (challengePath || challengeTitle || challengePhrase));
           var pageType='UNKNOWN';
           if(challenge) pageType='CHALLENGE';
           else if(login) pageType='LOGIN';

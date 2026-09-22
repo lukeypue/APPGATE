@@ -59,11 +59,11 @@ class HumanSignInActivity : AppCompatActivity() {
 
                 override fun onLocationChange(
                     session: GeckoSession,
-                    url: String,
-                    perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>?,
+                    url: String?,
+                    perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
                     hasUserGesture: Boolean
                 ) {
-                    val host = runCatching { Uri.parse(url).host.orEmpty() }.getOrDefault("")
+                    val host = runCatching { Uri.parse(url.orEmpty()).host.orEmpty() }.getOrDefault("")
                     if (LearningNavigationPolicy.shouldAllow(targetHost, host, false)) {
                         status.text = "Sign-in returned to $targetName. If the site looks signed in, tap DONE — RETURN TO LEARNING."
                     }

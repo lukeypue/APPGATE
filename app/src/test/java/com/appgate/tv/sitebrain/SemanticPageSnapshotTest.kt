@@ -45,6 +45,15 @@ class SemanticPageSnapshotTest {
         assertTrue(!script.contains("sessionstorage"))
     }
 
+    @Test
+    fun snapshotScriptCapturesComboboxesAndNativeChoices() {
+        val script = SemanticPageSnapshot.javascript()
+        assertTrue(script.contains("[role=\"combobox\"]"))
+        assertTrue(script.contains("[role=\"option\"]"))
+        assertTrue(script.contains("choices:"))
+        assertTrue(script.contains("el.options"))
+    }
+
     private fun categoryJson(heading: String, countText: String): String =
         """{
           "url":"https://example.com/category/vacation?sort=newest",

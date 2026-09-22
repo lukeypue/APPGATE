@@ -59,17 +59,15 @@ object AiTeacherClient {
             put("additionalProperties", false)
             put("properties", JSONObject().apply {
                 put("action_kind", JSONObject().apply {
-                    put("type", listOf("string", "null"))
+                    put("type", "string")
                     put("enum", JSONArray(listOf(
                         "SEARCH", "NAVIGATE", "OPEN_CATEGORY", "APPLY_FILTER", "SORT",
-                        "PAGINATE", "EXPAND", "OPEN_DETAIL", "OPEN_TAB", "BACK", "NO_ACTION", JSONObject.NULL
+                        "PAGINATE", "EXPAND", "OPEN_DETAIL", "OPEN_TAB", "BACK", "NO_ACTION"
                     )))
                 })
-                put("target_element_id", JSONObject().apply {
-                    put("type", JSONArray(listOf("string", "null")))
-                })
+                put("target_element_id", JSONObject().apply { put("type", "string") })
                 put("diagnosis", JSONObject().apply { put("type", "string") })
-                put("capability_gap", JSONObject().apply { put("type", JSONArray(listOf("string", "null"))) })
+                put("capability_gap", JSONObject().apply { put("type", "string") })
                 put("needs_engine_code", JSONObject().apply { put("type", "boolean") })
             })
             put("required", JSONArray(listOf("action_kind", "target_element_id", "diagnosis", "capability_gap", "needs_engine_code")))
@@ -109,7 +107,7 @@ object AiTeacherClient {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val responseText = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) error("AI teacher request failed with HTTP $code")
+            if (code !in 200..299) error("AI teacher request failed with HTTP $code: ${responseText.take(700)}")
             val response = JSONObject(responseText)
             val outputText = response.optString("output_text").ifBlank { extractOutputText(response) }
             if (outputText.isBlank()) error("AI teacher returned no structured output")

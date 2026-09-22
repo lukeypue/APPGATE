@@ -5,24 +5,21 @@
   const clean = (v) => (v || "").replace(/\s+/g, " ").trim();
   const visible = (el) => {
     if (!el) return false;
-    const s = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
   };
   const label = (el) => clean(
     el.getAttribute("aria-label") ||
-    el.innerText ||
-    el.textContent ||
     el.getAttribute("title") ||
     el.getAttribute("placeholder") ||
     el.getAttribute("name") ||
+    el.textContent ||
     ""
-  ).slice(0, 180);
+  ).slice(0, 160);
 
   function snapshot() {
     const selectors = 'a[href],button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="combobox"],[role="listbox"],[role="option"],[aria-haspopup="listbox"],[aria-expanded],[aria-label]';
     const elements = [];
-    Array.from(document.querySelectorAll(selectors)).slice(0, 800).forEach((el, i) => {
+    Array.from(document.querySelectorAll(selectors)).slice(0, 280).forEach((el, i) => {
       if (!visible(el)) return;
       const type = (el.getAttribute("type") || "").toLowerCase();
       if (type === "password" || type === "hidden" || type === "file") return;
@@ -44,7 +41,7 @@
       host: location.host.toLowerCase(),
       title: document.title || "",
       readyState: document.readyState || "",
-      textLength: ((document.body && document.body.innerText) || "").length,
+      textLength: ((document.body && document.body.textContent) || "").length,
       scrollHeight: document.body ? document.body.scrollHeight : 0,
       controls: elements
     };
@@ -88,7 +85,17 @@
   port.onMessage.addListener((message) => {
     try {
       if (!message || !message.type) return;
-      if (message.type === "SNAPSHOT_REQUEST") port.postMessage(snapshot());
+      if (message.type === "SNAPSHOT_REQUEST") {
+        const send = () => {
+          try { port.postMessage(snapshot()); }
+          catch (e) { port.postMessage({type:"BRIDGE_ERROR", message:String(e)}); }
+        };
+        if ("requestIdleCallback" in window) {
+          requestIdleCallback(send, {timeout: 1800});
+        } else {
+          setTimeout(send, 350);
+        }
+      }
       else if (message.type === "ACTION") port.postMessage(execute(message));
       else if (message.type === "PING") port.postMessage({type:"PONG", url:location.href});
     } catch (e) {

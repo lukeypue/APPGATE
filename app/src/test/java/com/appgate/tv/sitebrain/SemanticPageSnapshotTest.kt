@@ -56,6 +56,14 @@ class SemanticPageSnapshotTest {
     }
 
     @Test
+    fun richStorefrontDoesNotBecomeChallengeFromGenericSecurityText() {
+        val script = SemanticPageSnapshot.javascript()
+        assertTrue(script.contains("richInteractivePage"))
+        assertTrue(script.contains("challengeWidget"))
+        assertTrue(script.contains("!richInteractivePage"))
+    }
+
+    @Test
     fun snapshotScriptCapturesComboboxesAndNativeChoices() {
         val script = SemanticPageSnapshot.javascript()
         assertTrue(script.contains("[role=\"combobox\"]"))

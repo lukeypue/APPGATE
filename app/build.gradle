@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 21
-        versionName "6.13.0-ai-teacher"
+        versionCode 22
+        versionName "6.14.0-ai-teacher-main-screen"
     }
 
     signingConfigs {

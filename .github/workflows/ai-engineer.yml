@@ -30,6 +30,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Verify OpenAI secret is available
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "OPENAI_API_KEY is empty for GitHub Actions. Add it under APPGATE -> Settings -> Secrets and variables -> Actions -> Repository secrets."
+            exit 1
+          fi
+          echo "OpenAI secret is available to this workflow."
+
       - name: Prepare sanitized capability-gap input
         env:
           EVENT_NAME: ${{ github.event_name }}

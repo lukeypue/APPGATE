@@ -305,7 +305,7 @@ class BrowserActivity : AppCompatActivity() {
             return
         }
         mode = ScanMode.DEEP
-        deepQueue = candidates.values.take(30)
+        deepQueue = candidates.values.take(100)
         deepIndex = 0
         progress.max = deepQueue.size.coerceAtLeast(1)
         loadDeepCandidate()
@@ -314,6 +314,7 @@ class BrowserActivity : AppCompatActivity() {
     private fun loadDeepCandidate() {
         if (stopped) return
         if (deepIndex >= deepQueue.size) {
+            addUnverifiedFallbackCandidates()
             showCombinedResults()
             return
         }
@@ -417,7 +418,7 @@ class BrowserActivity : AppCompatActivity() {
                 val sourceName = currentName()
                 val sourceKey = currentKey()
                 for (i in 0 until array.length()) {
-                    if (parsed.requiredTerms.isNotEmpty() && accepted >= 6) break
+                    if (parsed.requiredTerms.isNotEmpty() && accepted >= 40) break
                     val o = array.optJSONObject(i) ?: continue
                     val title = o.optString("title").trim()
                     val url = o.optString("url").trim()
@@ -607,6 +608,20 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
+    private fun addUnverifiedFallbackCandidates() {
+        if (parsed.requiredTerms.isEmpty()) return
+        candidates.values.forEach { candidate ->
+            if (!results.containsKey(candidate.url)) {
+                results[candidate.url] = FoundResult(
+                    source = candidate.source,
+                    title = candidate.title,
+                    url = candidate.url,
+                    deepVerified = false
+                )
+            }
+        }
+    }
+
     private fun nextSource() {
         if (stopped) return
         explorationInProgress = false
@@ -669,7 +684,7 @@ class BrowserActivity : AppCompatActivity() {
         }
 
         if (results.isEmpty()) {
-            list.addView(label("No listing passed every requested condition yet. That is better than showing expensive or irrelevant listings as matches. Source notes below show which sites may need more Site Brain learning, a stronger verified path, or login.", 15f, Color.rgb(230, 210, 150), false).apply { setPadding(0, 14, 0, 14) })
+            list.addView(label("No usable listings were collected yet. Source notes below show which sites may need more Site Brain learning, a stronger verified path, or login.", 15f, Color.rgb(230, 210, 150), false).apply { setPadding(0, 14, 0, 14) })
         }
 
         results.values.take(100).forEach { result ->
@@ -682,7 +697,11 @@ class BrowserActivity : AppCompatActivity() {
             if (result.deepVerified) {
                 card.addView(label("✓ Verified match — detail requirement confirmed", 12f, Color.rgb(145, 220, 155), true))
             } else {
-                card.addView(label("Possible match — card evidence passed; listing not deeply verified", 12f, Color.rgb(230, 210, 150), true))
+                val missing = parsed.requiredTerms
+                    .filterNot { it == SearchIntentParser.HARD_LIMITS_DEEP_MARKER }
+                    .joinToString()
+                    .ifBlank { "one or more requested details" }
+                card.addView(label("Closest useful match — main filters passed; $missing not verified online", 12f, Color.rgb(230, 210, 150), true))
             }
             card.addView(label(result.title, 16f, Color.WHITE, true).apply { setPadding(0, 4, 0, 6) })
             card.addView(Button(this).apply {

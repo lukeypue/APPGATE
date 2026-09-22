@@ -161,6 +161,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          CURRENT_HEAD=$(git ls-remote origin refs/heads/ai-browser-v6-deep-search | awk '{print $1}')
+          if [ "$CURRENT_HEAD" != "$GITHUB_SHA" ]; then
+            echo "Skipping stale updater publish: branch has moved to $CURRENT_HEAD"
+            exit 0
+          fi
           if gh release view ai-browser-latest >/dev/null 2>&1; then
             gh release upload ai-browser-latest AI-Browser-latest.apk latest-version.json --clobber
             gh release edit ai-browser-latest --title "AI Browser Latest" --notes "Stable-signed AI Browser build. Future builds use the same signing identity so Android can update in place."

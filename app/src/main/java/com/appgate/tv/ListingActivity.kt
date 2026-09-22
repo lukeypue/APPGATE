@@ -1,5 +1,6 @@
 package com.appgate.tv
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import org.mozilla.geckoview.GeckoSession
@@ -16,7 +17,7 @@ class ListingActivity : AppCompatActivity() {
         val url = intent.getStringExtra("url").orEmpty()
 
         geckoView = GeckoView(this).apply {
-            setViewBackend(GeckoView.BACKEND_SURFACE_VIEW)
+            setBackgroundColor(Color.WHITE)
         }
         session = GeckoSession().apply {
             contentDelegate = object : GeckoSession.ContentDelegate {}

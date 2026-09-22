@@ -58,7 +58,7 @@ object GitHubLogRequestClient {
         gapLog: File?
     ): File {
         val safeId = request.requestId.replace(Regex("[^A-Za-z0-9._-]"), "_").take(80)
-        val out = File(context.cacheDir, "AI-Browser-Logs-$safeId.zip")
+        val out = File(context.filesDir, "AI-Browser-Logs-$safeId.zip")
         ZipOutputStream(out.outputStream().buffered()).use { zip ->
             add(zip, learningLog, "site_brain_learning_log.json")
             if (gapLog != null && gapLog.exists()) add(zip, gapLog, "site_brain_capability_gaps.jsonl")

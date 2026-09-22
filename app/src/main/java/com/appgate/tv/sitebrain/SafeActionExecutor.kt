@@ -31,6 +31,29 @@ object SafeActionExecutor {
         }
 
         val selector = element.locatorHints.firstOrNull { isSafeSelector(it) } ?: return null
+        if (actionKind == ActionKind.APPLY_FILTER && element.tag.equals("select", true)) {
+            return """
+                (function(){
+                  var el=document.querySelector(${jsString(selector)});
+                  if(!el) return 'MISSING';
+                  if(el.disabled || el.getAttribute('aria-disabled')==='true') return 'DISABLED';
+                  var opts=Array.from(el.options||[]).filter(function(o){
+                    if(o.disabled) return false;
+                    var t=(o.text||o.label||o.value||'').trim().toLowerCase();
+                    if(!t || o.value==='') return false;
+                    return !/^(select|choose|all|any|none)(\\s|$)/.test(t);
+                  });
+                  var pick=opts.find(function(o){ return !o.selected && o.value!==el.value; });
+                  if(!pick) return 'NO_OPTION';
+                  el.value=pick.value;
+                  pick.selected=true;
+                  el.dispatchEvent(new Event('input',{bubbles:true}));
+                  el.dispatchEvent(new Event('change',{bubbles:true}));
+                  return 'SELECTED:'+((pick.text||pick.value||'').trim());
+                })();
+            """.trimIndent()
+        }
+
         if (actionKind == ActionKind.SEARCH && element.tag in setOf("input", "textarea")) {
             val value = query?.trim()?.takeIf { it.isNotBlank() } ?: return null
             return """

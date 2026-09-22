@@ -68,11 +68,14 @@ object SemanticPageSnapshot {
           var body=clean((document.body&&document.body.innerText)||'').slice(0,12000);
           var lower=((document.title||'')+' '+body).toLowerCase();
           var path=(location.pathname||'').toLowerCase();
-          var passwordFields=document.querySelectorAll('input[type="password"]').length;
+          var visiblePasswordFields=Array.from(document.querySelectorAll('input[type="password"]')).filter(visible).length;
           var authPath=/(^|\/)(login|signin|sign-in|checkpoint|auth)(\/|$)/.test(path);
           var authGate=/(log in to continue|login to continue|sign in to continue|sign up \/ log in|continue with google|continue with facebook|continue with apple)/.test(lower);
-          var login=passwordFields>0 || authPath || authGate;
-          var challenge=/(captcha|verify you are human|security check|checkpoint|unusual traffic|confirm your identity)/.test(lower);
+          var login=visiblePasswordFields>0 || authPath || (authGate && elements.length<25);
+          var challengePath=/(^|\/)(captcha|challenge|checkpoint|verify|security-check)(\/|$)/.test(path);
+          var challengeTitle=/(captcha|verify you are human|security check|unusual traffic|confirm your identity|are you a robot)/.test((document.title||'').toLowerCase());
+          var challengePhrase=/(verify you are human|unusual traffic|confirm your identity|are you a robot|complete the captcha|enter the characters you see)/.test(lower);
+          var challenge=challengePath || challengeTitle || (challengePhrase && elements.length<25);
           var pageType='UNKNOWN';
           if(challenge) pageType='CHALLENGE';
           else if(login) pageType='LOGIN';

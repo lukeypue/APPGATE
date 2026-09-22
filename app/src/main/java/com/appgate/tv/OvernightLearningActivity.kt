@@ -879,6 +879,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     }
 
     private fun updateCounters() {
+        if (!::counters.isInitialized) return
         val t = tracker ?: return
         val stalled = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt) / 1000
         counters.text = "Site ${t.siteIndex + 1}/${sites.size} · verified ${t.verifiedDiscoveries} · passes ${t.completedPasses} · logs ${events.size} · no-progress ${stalled}s"

@@ -251,8 +251,13 @@ class OvernightLearningActivity : AppCompatActivity() {
                         refreshTeachingSnapshot()
                         return
                     }
-                    if (actionInFlight) handler.postDelayed({ verifyAction() }, 900L)
-                    else handler.postDelayed({ mapAndAct() }, 900L)
+                    if (actionInFlight) {
+                        handler.postDelayed({ verifyAction() }, 900L)
+                    } else {
+                        tryDismissBlockingPopup { dismissed ->
+                            if (!dismissed) handler.postDelayed({ mapAndAct() }, 650L)
+                        }
+                    }
                 }
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
@@ -413,6 +418,147 @@ class OvernightLearningActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun tryDismissBlockingPopup(done: (Boolean) -> Unit) {
+        webView.evaluateJavascript(PopupDismissal.javascript()) { raw ->
+            val decoded = raw.orEmpty().trim().trim('"')
+            if (decoded.startsWith("DISMISSED:")) {
+                record("POPUP_DISMISS", "VERIFIED", activeSite?.expectedHost.orEmpty(), "", decoded.removePrefix("DISMISSED:"))
+                touchProgress()
+                handler.postDelayed({ mapAndAct() }, 450L)
+                done(true)
+            } else {
+                done(false)
+            }
+        }
+    }
+
+    private fun toggleTeachMode() {
+        if (stopped) return
+        teachingMode = !teachingMode
+        if (teachingMode) {
+            actionInFlight = false
+            controller = WebViewSiteBrainController(brainRepository)
+            teachButton.text = "DONE TEACHING"
+            pauseButton.isEnabled = false
+            resumeButton.isEnabled = false
+            status.text = "Teach mode\nTap the hard safe button, dropdown, filter, or popup-close action yourself. The brain will record what you clicked."
+            installHumanTeachListener()
+            refreshTeachingSnapshot()
+            record("TEACH_MODE", "STARTED", activeSite?.expectedHost.orEmpty(), "", "Human demonstration mode started")
+        } else {
+            teachButton.text = "TEACH ME"
+            pauseButton.isEnabled = true
+            resumeButton.isEnabled = false
+            controller = WebViewSiteBrainController(brainRepository)
+            touchProgress()
+            record("TEACH_MODE", "ENDED", activeSite?.expectedHost.orEmpty(), "", "Human demonstration mode ended")
+            handler.postDelayed({ mapAndAct() }, 500L)
+        }
+    }
+
+    private fun refreshTeachingSnapshot() {
+        controller.observe(webView) { result ->
+            result.onSuccess { observation ->
+                lastObservedSnapshot = observation.snapshot
+                lastCoverage = observation.brain.coverageScore
+            }
+        }
+    }
+
+    private fun installHumanTeachListener() {
+        val script = """
+            (function(){
+              if(window.__siteBrainTeachInstalled) return 'READY';
+              window.__siteBrainTeachInstalled=true;
+              function clean(v){return (v||'').replace(/\s+/g,' ').trim();}
+              function locator(el){
+                if(el.id) return '#'+CSS.escape(el.id);
+                var n=el.getAttribute('name');
+                if(n) return el.tagName.toLowerCase()+'[name="'+n.replace(/"/g,'')+'"]';
+                var a=el.getAttribute('aria-label');
+                if(a) return '[aria-label="'+a.replace(/"/g,'')+'"]';
+                return el.tagName.toLowerCase();
+              }
+              document.addEventListener('click',function(e){
+                if(!e.isTrusted || !window.SiteBrainTeachBridge) return;
+                var el=e.target && e.target.closest ? e.target.closest('button,a,input,select,[role="button"],[role="option"],[role="combobox"],[aria-label]') : e.target;
+                if(!el) return;
+                var p=el.parentElement;
+                var payload={
+                  host:location.host.toLowerCase(),
+                  tag:(el.tagName||'').toLowerCase(),
+                  role:el.getAttribute('role')||'',
+                  label:clean(el.getAttribute('aria-label')||el.getAttribute('title')||el.innerText||el.textContent||el.value||''),
+                  href:el.href||'',
+                  inputType:(el.getAttribute('type')||'').toLowerCase(),
+                  nearbyText:p?clean(p.innerText||p.textContent||'').slice(0,220):'',
+                  locator:locator(el)
+                };
+                SiteBrainTeachBridge.onHumanClick(JSON.stringify(payload));
+              },true);
+              return 'READY';
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(script, null)
+    }
+
+    inner class TeachBridge {
+        @JavascriptInterface
+        fun onHumanClick(json: String) {
+            runOnUiThread { handleHumanClick(json) }
+        }
+    }
+
+    private fun handleHumanClick(json: String) {
+        if (!teachingMode || stopped || System.currentTimeMillis() - lastHumanTouchAt > 2_000L) return
+        val before = lastObservedSnapshot ?: return
+        val obj = runCatching { JSONObject(json) }.getOrNull() ?: return
+        val host = obj.optString("host")
+        if (!guard.accept(activeSessionId, host)) return
+        val element = SemanticElement(
+            id = "human",
+            tag = obj.optString("tag"),
+            role = obj.optString("role").takeIf { it.isNotBlank() },
+            label = obj.optString("label").take(180),
+            href = obj.optString("href").takeIf { it.isNotBlank() },
+            inputType = obj.optString("inputType").takeIf { it.isNotBlank() },
+            selected = false,
+            disabled = false,
+            nearbyText = obj.optString("nearbyText").take(220),
+            locatorHints = listOfNotNull(obj.optString("locator").takeIf { it.isNotBlank() })
+        )
+        if (SafeActionClassifier.classify(element) != SafetyClass.SAFE) {
+            record("HUMAN_DEMO", "IGNORED_UNSAFE", host, before.routeSignature, element.label)
+            return
+        }
+        var kind = SafeActionClassifier.inferActionKind(element)
+        if (kind == ActionKind.UNKNOWN && PopupDismissal.isSafeDismissLabel(element.label)) kind = ActionKind.EXPAND
+        if (kind == ActionKind.UNKNOWN) kind = ActionKind.NAVIGATE
+        val edgeId = ("human|${before.fingerprint}|${kind.name}|${element.label.lowercase()}|${element.href.orEmpty()}").hashCode().toUInt().toString(16)
+        val edge = SiteEdge(
+            id = edgeId,
+            fromFingerprint = before.fingerprint,
+            toFingerprint = null,
+            actionKind = kind,
+            semanticIntent = "HUMAN_DEMO:${kind.name}:${element.label.take(100)}",
+            label = element.label,
+            safetyClass = SafetyClass.SAFE,
+            locatorHints = element.locatorHints,
+            expectedPageType = null,
+            observedPostcondition = "demonstrated by user",
+            confidence = 0.70,
+            successCount = 1,
+            failureCount = 0,
+            lastVerifiedAt = System.currentTimeMillis()
+        )
+        brainRepository.recordTransition(host, before.fingerprint, edge, null)
+        tracker?.recordVerified()
+        verifiedThisSite++
+        touchProgress()
+        record("HUMAN_DEMO", "LEARNED", host, before.routeSignature, "${kind.name}:${element.label}")
+        handler.postDelayed({ refreshTeachingSnapshot() }, 700L)
     }
 
     private fun handlePlateau(host: String, route: String) {

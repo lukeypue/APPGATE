@@ -54,7 +54,8 @@ object SemanticPageSnapshot {
               selected:!!(el.checked||el.selected||el.getAttribute('aria-selected')==='true'||el.getAttribute('aria-pressed')==='true'),
               disabled:!!(el.disabled||el.getAttribute('aria-disabled')==='true'),
               nearbyText:near,
-              locatorHints:[cssHint(el)]
+              locatorHints:[cssHint(el)],
+              currentValue:(el.tagName==='SELECT' ? clean(el.options && el.selectedIndex>=0 ? el.options[el.selectedIndex].text : el.value) : clean(el.value||el.getAttribute('aria-valuetext')||''))
             });
           });
           var headings=Array.from(document.querySelectorAll('h1,h2,h3,[role="heading"]')).filter(visible).map(function(h){return clean(h.innerText||h.textContent||'').slice(0,160);}).filter(Boolean).slice(0,50);
@@ -142,7 +143,8 @@ object SemanticPageSnapshot {
                 selected = e.optBoolean("selected", false),
                 disabled = e.optBoolean("disabled", false),
                 nearbyText = e.optNullableString("nearbyText"),
-                locatorHints = e.optJSONArray("locatorHints").toStringList()
+                locatorHints = e.optJSONArray("locatorHints").toStringList(),
+                currentValue = e.optNullableString("currentValue")
             )
         }
         return out

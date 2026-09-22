@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -103,6 +104,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var pageSettleGeneration = 0
     private var mainFrameLoading = false
     private var pageSettling = false
+    private var lastHeartbeatSignature = ""
 
     private val githubLogRequestPoller = object : Runnable {
         override fun run() {
@@ -111,6 +113,38 @@ class OvernightLearningActivity : AppCompatActivity() {
         }
     }
 
+    private val webViewHeartbeat = object : Runnable {
+        override fun run() {
+            if (!stopped && ::webView.isInitialized) {
+                val pm = getSystemService(POWER_SERVICE) as PowerManager
+                val screenState = if (pm.isInteractive) "SCREEN_ON" else "SCREEN_OFF"
+                val stalledSeconds = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt) / 1000
+                webView.evaluateJavascript(
+                    """(function(){
+                        var b=document.body;
+                        var controls=b?b.querySelectorAll('a,button,input,select,textarea,[role]').length:0;
+                        return (document.readyState||'')+'|'+location.host+'|'+location.pathname+'|'+controls;
+                    })();""".trimIndent()
+                ) { raw ->
+                    val signature = raw.orEmpty().trim()
+                    val state = when {
+                        signature.isBlank() || signature == "null" -> "NO_RESPONSE"
+                        signature == lastHeartbeatSignature -> "ALIVE_STABLE"
+                        else -> "ALIVE_CHANGED"
+                    }
+                    if (signature.isNotBlank() && signature != "null") lastHeartbeatSignature = signature
+                    record(
+                        "WEBVIEW_HEARTBEAT",
+                        state,
+                        activeSite?.expectedHost.orEmpty(),
+                        lastObservedSnapshot?.routeSignature.orEmpty(),
+                        "$screenState; stalled=${stalledSeconds}s; $signature"
+                    )
+                }
+            }
+            if (!stopped) handler.postDelayed(this, WEBVIEW_HEARTBEAT_MS)
+        }
+    }
     private val watchdog = object : Runnable {
         override fun run() {
             if (!stopped && !userPaused && !authScreenOpen && !teachingMode && !mainFrameLoading && !pageSettling && !actionInFlight && !teacherCallInFlight) {
@@ -343,6 +377,7 @@ class OvernightLearningActivity : AppCompatActivity() {
 
         updateCounters()
         handler.postDelayed(watchdog, WATCHDOG_POLL_MS)
+        handler.postDelayed(webViewHeartbeat, WEBVIEW_HEARTBEAT_MS)
         handler.postDelayed(githubLogRequestPoller, 8_000L)
         startCurrentSite()
     }
@@ -1125,6 +1160,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val WEBVIEW_HEARTBEAT_MS = 5 * 60 * 1000L
         private const val AUTH_REQUEST = 4201
         private const val LOG_FILE = "site_brain_learning_log.json"
         private const val WATCHDOG_POLL_MS = 5_000L

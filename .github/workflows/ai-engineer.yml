@@ -1,6 +1,10 @@
 name: AI Site Brain Engineer
 
 on:
+  push:
+    branches: [ai-browser-v6-deep-search]
+    paths:
+      - '.github/codex/smoke-test.json'
   workflow_dispatch:
     inputs:
       gap_summary:
@@ -34,6 +38,8 @@ jobs:
           mkdir -p .github/codex
           if [ "$EVENT_NAME" = "repository_dispatch" ]; then
             jq '{source:"repository_dispatch",client_payload:.client_payload}' "$GITHUB_EVENT_PATH" > .github/codex/current-gap.json
+          elif [ "$EVENT_NAME" = "push" ]; then
+            cp .github/codex/smoke-test.json .github/codex/current-gap.json
           else
             python3 - <<'PY'
           import json, os

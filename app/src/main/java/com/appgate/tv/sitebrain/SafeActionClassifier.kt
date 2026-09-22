@@ -22,6 +22,8 @@ object SafeActionClassifier {
     fun inferActionKind(element: SemanticElement): ActionKind {
         val text = normalizedText(element)
         return when {
+            element.tag.equals("select", true) -> ActionKind.APPLY_FILTER
+            element.role.equals("combobox", true) || element.role.equals("option", true) || element.role.equals("listbox", true) -> ActionKind.APPLY_FILTER
             text.contains("search") || element.inputType?.equals("search", true) == true -> ActionKind.SEARCH
             text.contains("filter") || text.contains("price") || text.contains("mileage") || text.contains("distance") -> ActionKind.APPLY_FILTER
             text.contains("sort") -> ActionKind.SORT

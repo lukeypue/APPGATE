@@ -1,0 +1,4 @@
+{
+  "source": "smoke_test",
+  "summary": "Smoke test only. Do not change source code. Confirm the AI engineer can read AGENTS.md, inspect the repository, and return no patch because there is no real capability gap."
+}

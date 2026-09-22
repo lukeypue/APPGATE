@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 27
-        versionName "6.19.0-versioned-learning-logs"
+        versionCode 28
+        versionName "6.20.0-overnight-startup-hotfix"
     }
 
     signingConfigs {

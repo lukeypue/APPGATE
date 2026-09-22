@@ -50,6 +50,13 @@ class MainActivity : AppCompatActivity() {
         column.addView(text("Training stays on one site at a time. A foreground learning service and wake lock help it continue with the screen off. If there is no useful progress for 30 seconds, the current site is checkpointed and skipped so the run can keep going.", 13f, Color.rgb(155, 215, 175)).apply { setPadding(4, 4, 0, 8) })
 
         column.addView(Button(this).apply {
+            text = "FACEBOOK GECKO PILOT"
+            textSize = 17f
+            setOnClickListener { startActivity(Intent(this@MainActivity, FacebookGeckoPilotActivity::class.java)) }
+        })
+        column.addView(text("New engine test: Facebook Marketplace runs in bundled Gecko with its own mini brain while the regular 31-site learner remains available for comparison.", 12f, Color.rgb(155, 215, 175)).apply { setPadding(4, 2, 0, 12) })
+
+        column.addView(Button(this).apply {
             text = "UPDATE AI BROWSER"
             textSize = 17f
             setOnClickListener { startActivity(Intent(this@MainActivity, UpdateActivity::class.java)) }

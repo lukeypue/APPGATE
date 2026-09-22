@@ -49,6 +49,8 @@ import com.appgate.tv.sitebrain.AiTeacherKeyStore
 import com.appgate.tv.sitebrain.AiTeacherClient
 import com.appgate.tv.sitebrain.SiteBrainObservation
 import com.appgate.tv.sitebrain.LearningQueryGenerator
+import com.appgate.tv.sitebrain.GitHubLogRequest
+import com.appgate.tv.sitebrain.GitHubLogRequestClient
 import org.json.JSONObject
 import java.io.File
 
@@ -61,6 +63,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private lateinit var skipButton: Button
     private lateinit var teachButton: Button
     private lateinit var aiTeacherButton: Button
+    private lateinit var requestedLogsButton: Button
     private lateinit var controller: WebViewSiteBrainController
     private lateinit var brainRepository: SiteBrainRepository
     private lateinit var gapLogger: CapabilityGapLogger
@@ -95,6 +98,15 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var lastObservedSnapshot: PageSnapshot? = null
     private var teacherCallInFlight = false
     private var lastTeacherCallAt = 0L
+    private var pendingGitHubLogRequest: GitHubLogRequest? = null
+    private var logRequestCheckInFlight = false
+
+    private val githubLogRequestPoller = object : Runnable {
+        override fun run() {
+            if (!stopped) checkGitHubLogRequest()
+            if (!stopped) handler.postDelayed(this, GITHUB_LOG_REQUEST_POLL_MS)
+        }
+    }
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -205,6 +217,14 @@ class OvernightLearningActivity : AppCompatActivity() {
             text = "SHARE AI GAP LOG"
             setOnClickListener { shareGapLog() }
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        requestedLogsButton = Button(this).apply {
+            text = "CHECK GITHUB LOG REQUEST"
+            setOnClickListener {
+                val request = pendingGitHubLogRequest
+                if (request != null) shareRequestedLogs(request) else checkGitHubLogRequest(forceToast = true)
+            }
+        }
+        root.addView(requestedLogsButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         root.addView(TextView(this).apply {
             setTextColor(Color.rgb(170, 185, 205))
@@ -301,6 +321,7 @@ class OvernightLearningActivity : AppCompatActivity() {
 
         updateCounters()
         handler.postDelayed(watchdog, WATCHDOG_POLL_MS)
+        handler.postDelayed(githubLogRequestPoller, 8_000L)
         startCurrentSite()
     }
 
@@ -918,6 +939,58 @@ class OvernightLearningActivity : AppCompatActivity() {
         persistLog()
     }
 
+    private fun checkGitHubLogRequest(forceToast: Boolean = false) {
+        if (logRequestCheckInFlight) return
+        logRequestCheckInFlight = true
+        Thread {
+            val result = GitHubLogRequestClient.fetch()
+            runOnUiThread {
+                logRequestCheckInFlight = false
+                result.onFailure {
+                    if (forceToast) Toast.makeText(this, "Could not check GitHub log request right now.", Toast.LENGTH_LONG).show()
+                }.onSuccess { request ->
+                    if (request == null || !GitHubLogRequestClient.isNew(this, request)) {
+                        if (forceToast) Toast.makeText(this, "No new GitHub log request.", Toast.LENGTH_SHORT).show()
+                        return@onSuccess
+                    }
+                    pendingGitHubLogRequest = request
+                    requestedLogsButton.text = "SEND BOTH REQUESTED LOGS"
+                    record("GITHUB_LOG_REQUEST", "RECEIVED", activeSite?.expectedHost.orEmpty(), "", request.requestId)
+                    Toast.makeText(this, "GitHub requested both Site Brain logs. Tap SEND BOTH REQUESTED LOGS.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun shareRequestedLogs(request: GitHubLogRequest) {
+        persistLog(force = true)
+        val learning = File(filesDir, LOG_FILE)
+        if (!learning.exists()) {
+            Toast.makeText(this, "The learning log is not ready yet.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val bundle = runCatching {
+            GitHubLogRequestClient.buildBundle(this, request, learning, gapLogger.fileOrNull())
+        }.getOrElse {
+            Toast.makeText(this, "Could not package the requested logs.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", bundle)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_SUBJECT, "AI Browser Requested Logs ${request.requestId}")
+            putExtra(Intent.EXTRA_TEXT, "GitHub request ${request.requestId}. Bundle contains the Site Brain learning log and AI capability-gap log when available.")
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("AI Browser requested logs", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        GitHubLogRequestClient.markHandled(this, request)
+        pendingGitHubLogRequest = null
+        requestedLogsButton.text = "CHECK GITHUB LOG REQUEST"
+        record("GITHUB_LOG_REQUEST", "BUNDLED", activeSite?.expectedHost.orEmpty(), "", request.requestId)
+        startActivity(Intent.createChooser(intent, "Send both requested logs"))
+    }
+
     private fun shareLogs() {
         persistLog(force = true)
         val file = File(filesDir, LOG_FILE)
@@ -988,5 +1061,6 @@ class OvernightLearningActivity : AppCompatActivity() {
         private const val LOG_FILE = "site_brain_learning_log.json"
         private const val WATCHDOG_POLL_MS = 5_000L
         private const val AI_TEACHER_COOLDOWN_MS = 45_000L
+        private const val GITHUB_LOG_REQUEST_POLL_MS = 60_000L
     }
 }

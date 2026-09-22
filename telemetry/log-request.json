@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "requestId": "initial",
+  "requestedAt": "2026-09-22T05:45:00Z",
+  "include": ["site_brain_learning_log.json", "site_brain_capability_gaps.jsonl"],
+  "reason": "Initial control-plane marker. The app should ignore requestId=initial."
+}

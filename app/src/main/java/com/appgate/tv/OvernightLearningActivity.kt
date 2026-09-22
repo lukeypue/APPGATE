@@ -186,6 +186,10 @@ class OvernightLearningActivity : AppCompatActivity() {
             setOnClickListener { shareLogs() }
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f))
         root.addView(row2)
+        root.addView(Button(this).apply {
+            text = "SHARE AI GAP LOG"
+            setOnClickListener { shareGapLog() }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         root.addView(TextView(this).apply {
             setTextColor(Color.rgb(170, 185, 205))
@@ -488,7 +492,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                 if(a) return '[aria-label="'+a.replace(/"/g,'')+'"]';
                 return el.tagName.toLowerCase();
               }
-              document.addEventListener('click',function(e){
+              function capture(e){
                 if(!e.isTrusted || !window.SiteBrainTeachBridge) return;
                 var el=e.target && e.target.closest ? e.target.closest('button,a,input,select,[role="button"],[role="option"],[role="combobox"],[aria-label]') : e.target;
                 if(!el) return;
@@ -504,7 +508,9 @@ class OvernightLearningActivity : AppCompatActivity() {
                   locator:locator(el)
                 };
                 SiteBrainTeachBridge.onHumanClick(JSON.stringify(payload));
-              },true);
+              }
+              document.addEventListener('click',capture,true);
+              document.addEventListener('change',capture,true);
               return 'READY';
             })();
         """.trimIndent()
@@ -808,6 +814,24 @@ class OvernightLearningActivity : AppCompatActivity() {
         }
         Toast.makeText(this, "Learning log attached as a JSON file.", Toast.LENGTH_SHORT).show()
         startActivity(Intent.createChooser(intent, "Share / Save Learning Logs"))
+    }
+
+    private fun shareGapLog() {
+        val file = gapLogger.fileOrNull()
+        if (file == null) {
+            Toast.makeText(this, "No AI capability gaps have been recorded yet.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/x-ndjson"
+            putExtra(Intent.EXTRA_SUBJECT, "AI Browser Capability Gap Log")
+            putExtra(Intent.EXTRA_TEXT, "Separate Site Brain capability-gap log for the AI Teacher / Engineer.")
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("AI capability gap log", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, "Share AI Capability Gap Log"))
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

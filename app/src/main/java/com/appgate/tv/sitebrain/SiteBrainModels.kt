@@ -58,7 +58,8 @@ data class SemanticElement(
     val selected: Boolean,
     val disabled: Boolean,
     val nearbyText: String?,
-    val locatorHints: List<String> = emptyList()
+    val locatorHints: List<String> = emptyList(),
+    val currentValue: String? = null
 )
 
 data class PageSnapshot(

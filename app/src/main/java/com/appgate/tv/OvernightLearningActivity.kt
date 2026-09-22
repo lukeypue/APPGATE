@@ -15,7 +15,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.JavascriptInterface
 import android.view.View
+import android.view.MotionEvent
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -32,6 +34,14 @@ import com.appgate.tv.sitebrain.SharedPreferencesSiteBrainStore
 import com.appgate.tv.sitebrain.SiteBrainControllerState
 import com.appgate.tv.sitebrain.SiteBrainRepository
 import com.appgate.tv.sitebrain.WebViewSiteBrainController
+import com.appgate.tv.sitebrain.PopupDismissal
+import com.appgate.tv.sitebrain.PageSnapshot
+import com.appgate.tv.sitebrain.SemanticElement
+import com.appgate.tv.sitebrain.SiteEdge
+import com.appgate.tv.sitebrain.SafeActionClassifier
+import com.appgate.tv.sitebrain.ActionKind
+import com.appgate.tv.sitebrain.SafetyClass
+import org.json.JSONObject
 import java.io.File
 
 class OvernightLearningActivity : AppCompatActivity() {
@@ -41,6 +51,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private lateinit var pauseButton: Button
     private lateinit var resumeButton: Button
     private lateinit var skipButton: Button
+    private lateinit var teachButton: Button
     private lateinit var controller: WebViewSiteBrainController
     private lateinit var brainRepository: SiteBrainRepository
 
@@ -69,10 +80,13 @@ class OvernightLearningActivity : AppCompatActivity() {
     private val seenRoutesThisVisit = HashSet<String>()
     private var lastLogPersistAt = 0L
     private var eventsAtLastPersist = 0
+    private var teachingMode = false
+    private var lastHumanTouchAt = 0L
+    private var lastObservedSnapshot: PageSnapshot? = null
 
     private val watchdog = object : Runnable {
         override fun run() {
-            if (!stopped && !userPaused && !authScreenOpen) {
+            if (!stopped && !userPaused && !authScreenOpen && !teachingMode) {
                 val stalled = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt)
                 if (LearningRuntimePolicy.shouldAutoSkip(stalled, waitingForHuman)) {
                     val site = activeSite
@@ -152,6 +166,12 @@ class OvernightLearningActivity : AppCompatActivity() {
         row1.addView(stopButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row1)
 
+        teachButton = Button(this).apply {
+            text = "TEACH ME"
+            setOnClickListener { toggleTeachMode() }
+        }
+        root.addView(teachButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row2.addView(Button(this).apply {
             text = "UPDATE"
@@ -166,7 +186,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         root.addView(TextView(this).apply {
             setTextColor(Color.rgb(170, 185, 205))
             textSize = 12f
-            text = "Overnight mode keeps a foreground learning service and CPU wake lock active so training can continue with the screen off. It trains one site at a time, keeps up to 50,000 learning events, checkpoints constantly, and auto-skips a site/state after 30 seconds without useful progress. Login/CAPTCHA/2FA still remain human-only."
+            text = "Overnight mode keeps a foreground learning service and CPU wake lock active so training can continue with the screen off. It trains one site at a time, keeps up to 50,000 learning events, checkpoints constantly, and auto-skips a site/state after 30 seconds without useful progress. Login/CAPTCHA/2FA still remain human-only. Tap TEACH ME to demonstrate a hard safe button, filter, dropdown, or popup-close action and the Site Brain will save that interaction."
             setPadding(0, 6, 0, 10)
         })
 
@@ -182,6 +202,13 @@ class OvernightLearningActivity : AppCompatActivity() {
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             webChromeClient = WebChromeClient()
+            addJavascriptInterface(TeachBridge(), "SiteBrainTeachBridge")
+            setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_UP) {
+                    lastHumanTouchAt = System.currentTimeMillis()
+                }
+                false
+            }
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
@@ -219,6 +246,11 @@ class OvernightLearningActivity : AppCompatActivity() {
                     val routeKey = "$host${parsed.path.orEmpty()}"
                     if (seenRoutesThisVisit.add(routeKey)) touchProgress()
                     record("PAGE_LOADED", "OBSERVED", host, parsed.path.orEmpty(), actual)
+                    installHumanTeachListener()
+                    if (teachingMode) {
+                        refreshTeachingSnapshot()
+                        return
+                    }
                     if (actionInFlight) handler.postDelayed({ verifyAction() }, 900L)
                     else handler.postDelayed({ mapAndAct() }, 900L)
                 }
@@ -291,6 +323,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         lastCoverage = 0.0
         routeActionAttempts.clear()
         seenRoutesThisVisit.clear()
+        lastObservedSnapshot = null
         siteStartedAt = System.currentTimeMillis()
         lastProgressAt = siteStartedAt
         actionInFlight = false
@@ -307,7 +340,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     }
 
     private fun mapAndAct() {
-        if (stopped || userPaused || waitingForHuman || actionInFlight || authScreenOpen) return
+        if (stopped || userPaused || waitingForHuman || actionInFlight || authScreenOpen || teachingMode) return
         val site = activeSite ?: return
         val elapsed = System.currentTimeMillis() - siteStartedAt
         if (actionsThisSite >= LearningRuntimePolicy.maxActionsPerVisit || elapsed >= LearningRuntimePolicy.maxMinutesPerVisit * 60_000L) {
@@ -326,6 +359,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                     record("OBSERVE", "STALE", actualHost, observation.snapshot.routeSignature, "Observation discarded by source-session guard")
                     return@onSuccess
                 }
+                lastObservedSnapshot = observation.snapshot
                 lastCoverage = observation.brain.coverageScore
                 val percent = (lastCoverage * 100).toInt().coerceIn(0, 100)
                 status.text = "Learning ${site.name}\n$percent% mapped · ${observation.safeActionsFound} safe controls · $verifiedThisSite verified here · action ${actionsThisSite + 1}/${LearningRuntimePolicy.maxActionsPerVisit}"

@@ -51,7 +51,8 @@ class SemanticPageSnapshotTest {
         assertTrue(script.contains("visiblePasswordFields"))
         assertTrue(script.contains("challengePath"))
         assertTrue(script.contains("challengeTitle"))
-        assertTrue(script.contains("challengePhrase && elements.length<25"))
+        assertTrue(script.contains("challengeWidget"))
+        assertTrue(script.contains("!richInteractivePage && (challengePath || challengeTitle || challengePhrase)"))
         assertTrue(!script.contains("var challenge=/(captcha|verify you are human|security check|checkpoint|unusual traffic|confirm your identity)/"))
     }
 

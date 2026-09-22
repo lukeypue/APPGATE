@@ -101,6 +101,8 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var pendingGitHubLogRequest: GitHubLogRequest? = null
     private var logRequestCheckInFlight = false
     private var pageSettleGeneration = 0
+    private var mainFrameLoading = false
+    private var pageSettling = false
 
     private val githubLogRequestPoller = object : Runnable {
         override fun run() {
@@ -111,7 +113,7 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private val watchdog = object : Runnable {
         override fun run() {
-            if (!stopped && !userPaused && !authScreenOpen && !teachingMode) {
+            if (!stopped && !userPaused && !authScreenOpen && !teachingMode && !mainFrameLoading && !pageSettling && !actionInFlight && !teacherCallInFlight) {
                 val stalled = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt)
                 if (LearningRuntimePolicy.shouldAutoSkip(stalled, waitingForHuman)) {
                     val site = activeSite
@@ -266,6 +268,9 @@ class OvernightLearningActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                     super.onPageStarted(view, url, favicon)
+                    mainFrameLoading = true
+                    pageSettling = false
+                    touchProgress()
                     if (awaitingInitialPage) webView.visibility = View.INVISIBLE
                 }
 
@@ -282,6 +287,8 @@ class OvernightLearningActivity : AppCompatActivity() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    mainFrameLoading = false
+                    touchProgress()
                     CookieManager.getInstance().flush()
                     if (stopped || userPaused || authScreenOpen) return
                     val actual = url.orEmpty()
@@ -319,6 +326,8 @@ class OvernightLearningActivity : AppCompatActivity() {
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame != true || stopped) return
+                    mainFrameLoading = false
+                    pageSettling = false
                     val host = request.url.host.orEmpty()
                     if (!guard.accept(activeSessionId, host)) return
                     webView.visibility = View.INVISIBLE
@@ -340,6 +349,7 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun waitForPageSettle(onReady: () -> Unit) {
         val generation = ++pageSettleGeneration
+        pageSettling = true
         val startedAt = System.currentTimeMillis()
         var lastSignature = ""
         var stableSamples = 0
@@ -360,10 +370,13 @@ class OvernightLearningActivity : AppCompatActivity() {
                 if (generation != pageSettleGeneration || stopped || userPaused || authScreenOpen) return@evaluateJavascript
                 val signature = raw.orEmpty()
                 val complete = signature.contains("complete|")
+                if (signature != lastSignature && lastSignature.isNotBlank()) touchProgress()
                 stableSamples = if (signature == lastSignature && complete) stableSamples + 1 else 0
                 lastSignature = signature
                 val elapsed = System.currentTimeMillis() - startedAt
-                if ((elapsed >= 900L && stableSamples >= 1) || elapsed >= 5_000L) {
+                if ((elapsed >= 1_200L && stableSamples >= 1) || elapsed >= 8_000L) {
+                    pageSettling = false
+                    touchProgress()
                     onReady()
                 } else {
                     handler.postDelayed({ poll() }, 450L)
@@ -426,6 +439,8 @@ class OvernightLearningActivity : AppCompatActivity() {
         siteStartedAt = System.currentTimeMillis()
         lastProgressAt = siteStartedAt
         actionInFlight = false
+        mainFrameLoading = false
+        pageSettling = false
         waitingForHuman = false
         authScreenOpen = false
         controller.markHumanResume()

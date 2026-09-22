@@ -952,7 +952,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                 result.onFailure {
                     if (forceToast) Toast.makeText(this, "Could not check GitHub log request right now.", Toast.LENGTH_LONG).show()
                 }.onSuccess { request ->
-                    if (request == null || !GitHubLogRequestClient.isNew(this, request)) {
+                    if (request == null || !GitHubLogRequestClient.isNew(this, request) || pendingGitHubLogRequest?.requestId == request.requestId) {
                         if (forceToast) Toast.makeText(this, "No new GitHub log request.", Toast.LENGTH_SHORT).show()
                         return@onSuccess
                     }

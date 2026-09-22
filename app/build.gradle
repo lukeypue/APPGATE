@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 36
-        versionName "6.28.0-plateau-loop-cap"
+        versionCode 37
+        versionName "6.29.0-relaxed-training-gates"
     }
 
     signingConfigs {

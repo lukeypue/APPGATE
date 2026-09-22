@@ -508,6 +508,9 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun requestAiTeacher(observation: SiteBrainObservation, reason: String): Boolean {
         val key = AiTeacherKeyStore.load(this) ?: return false
+        val site = activeSite
+        val trainingIntent = LearningQueryGenerator.nextQuery(site?.key.orEmpty(), site?.name.orEmpty(), observation.snapshot.host, actionsThisSite)
+        val teacherReason = "Autonomous training goal: $trainingIntent. $reason"
         val now = System.currentTimeMillis()
         if (teacherCallInFlight || now - lastTeacherCallAt < AI_TEACHER_COOLDOWN_MS) return false
         teacherCallInFlight = true
@@ -516,8 +519,8 @@ class OvernightLearningActivity : AppCompatActivity() {
         val host = observation.snapshot.host
         val route = observation.snapshot.routeSignature
         status.text = "Learning ${activeSite?.name ?: "site"}\nAI Teacher is studying a hard control…"
-        record("AI_TEACHER", "REQUESTED", host, route, reason)
-        AiTeacherClient.suggest(key, observation.snapshot, reason) { result ->
+        record("AI_TEACHER", "REQUESTED", host, route, teacherReason)
+        AiTeacherClient.suggest(key, observation.snapshot, teacherReason) { result ->
             runOnUiThread {
                 teacherCallInFlight = false
                 if (stopped || userPaused || teachingMode || authScreenOpen) return@runOnUiThread

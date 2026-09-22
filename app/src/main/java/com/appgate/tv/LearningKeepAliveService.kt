@@ -32,14 +32,22 @@ class LearningKeepAliveService : Service() {
             .build()
         startForeground(NOTIFICATION_ID, notification)
 
+        ensureWakeLock()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ensureWakeLock()
+        return START_STICKY
+    }
+
+    private fun ensureWakeLock() {
+        if (wakeLock?.isHeld == true) return
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AI Browser:SiteBrainLearning").apply {
             setReferenceCounted(false)
             acquire(12 * 60 * 60 * 1000L)
         }
     }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
         wakeLock?.let { if (it.isHeld) it.release() }

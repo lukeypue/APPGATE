@@ -234,7 +234,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         root.addView(TextView(this).apply {
             setTextColor(Color.rgb(170, 185, 205))
             textSize = 12f
-            text = "Overnight mode keeps a foreground learning service and CPU wake lock active so training can continue with the screen off. It trains one site at a time, keeps up to 50,000 learning events, checkpoints constantly, and auto-skips a site/state after 30 seconds without useful progress. Login/CAPTCHA/2FA still remain human-only. Tap TEACH ME to demonstrate a hard safe button, filter, dropdown, or popup-close action and the Site Brain will save that interaction."
+            text = "Overnight mode uses Fast Learning display: product/ad images are not downloaded, while page text, scripts, links, filters, forms, and controls still load for Site Brain. This reduces bandwidth and rendering work on heavy retail sites. It keeps a foreground learning service and CPU wake lock active, checkpoints constantly, and auto-skips a site/state after 30 seconds without useful progress. Login/CAPTCHA/2FA remain human-only."
             setPadding(0, 6, 0, 10)
         })
 
@@ -244,6 +244,12 @@ class OvernightLearningActivity : AppCompatActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
+            // Overnight learning does not need product photos, hero art, or ad images.
+            // Skipping them saves bandwidth/CPU while preserving DOM text, links, filters,
+            // forms, scripts, and the controls Site Brain actually learns.
+            settings.loadsImagesAutomatically = false
+            settings.blockNetworkImage = true
+            settings.mediaPlaybackRequiresUserGesture = true
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.allowFileAccess = false
             settings.allowContentAccess = false

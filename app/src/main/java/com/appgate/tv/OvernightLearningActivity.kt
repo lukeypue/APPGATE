@@ -100,6 +100,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var lastTeacherCallAt = 0L
     private var pendingGitHubLogRequest: GitHubLogRequest? = null
     private var logRequestCheckInFlight = false
+    private var pageSettleGeneration = 0
 
     private val githubLogRequestPoller = object : Runnable {
         override fun run() {
@@ -298,11 +299,13 @@ class OvernightLearningActivity : AppCompatActivity() {
                         refreshTeachingSnapshot()
                         return
                     }
-                    if (actionInFlight) {
-                        handler.postDelayed({ verifyAction() }, 900L)
-                    } else {
-                        tryDismissBlockingPopup { dismissed ->
-                            if (!dismissed) handler.postDelayed({ mapAndAct() }, 650L)
+                    waitForPageSettle {
+                        if (actionInFlight) {
+                            verifyAction()
+                        } else {
+                            tryDismissBlockingPopup { dismissed ->
+                                if (!dismissed) mapAndAct()
+                            }
                         }
                     }
                 }
@@ -327,6 +330,42 @@ class OvernightLearningActivity : AppCompatActivity() {
         handler.postDelayed(watchdog, WATCHDOG_POLL_MS)
         handler.postDelayed(githubLogRequestPoller, 8_000L)
         startCurrentSite()
+    }
+
+    private fun waitForPageSettle(onReady: () -> Unit) {
+        val generation = ++pageSettleGeneration
+        val startedAt = System.currentTimeMillis()
+        var lastSignature = ""
+        var stableSamples = 0
+
+        fun poll() {
+            if (generation != pageSettleGeneration || stopped || userPaused || authScreenOpen) return
+            webView.evaluateJavascript(
+                """(function(){
+                    var d=document;
+                    var b=d.body;
+                    var ready=d.readyState||'';
+                    var h=b?b.scrollHeight:0;
+                    var n=b?b.querySelectorAll('a,button,input,select,textarea,[role]').length:0;
+                    var t=b?((b.innerText||'').length):0;
+                    return ready+'|'+h+'|'+n+'|'+t;
+                })();""".trimIndent()
+            ) { raw ->
+                if (generation != pageSettleGeneration || stopped || userPaused || authScreenOpen) return@evaluateJavascript
+                val signature = raw.orEmpty()
+                val complete = signature.contains("complete|")
+                stableSamples = if (signature == lastSignature && complete) stableSamples + 1 else 0
+                lastSignature = signature
+                val elapsed = System.currentTimeMillis() - startedAt
+                if ((elapsed >= 900L && stableSamples >= 1) || elapsed >= 5_000L) {
+                    onReady()
+                } else {
+                    handler.postDelayed({ poll() }, 450L)
+                }
+            }
+        }
+
+        handler.postDelayed({ poll() }, 450L)
     }
 
     private fun startKeepAliveService() {

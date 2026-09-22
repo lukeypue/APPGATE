@@ -1037,6 +1037,7 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun resumeLearning() {
         if (stopped || authScreenOpen) return
+        val clearedHumanGate = waitingForHuman
         userPaused = false
         waitingForHuman = false
         pauseButton.isEnabled = true
@@ -1044,9 +1045,27 @@ class OvernightLearningActivity : AppCompatActivity() {
         skipButton.isEnabled = true
         controller.markHumanResume()
         touchProgress()
-        record("LEARNING", "RESUMED", activeSite?.expectedHost.orEmpty(), "", "Resumed by user")
         CookieManager.getInstance().flush()
-        webView.reload()
+
+        if (clearedHumanGate) {
+            val host = runCatching { Uri.parse(webView.url.orEmpty()).host.orEmpty() }.getOrDefault("")
+            getSharedPreferences("site_brain_human_clearance", MODE_PRIVATE).edit()
+                .putLong(host.lowercase(), System.currentTimeMillis())
+                .apply()
+            record("HUMAN_GATE", "CLEARED_BY_USER", host, lastObservedSnapshot?.routeSignature.orEmpty(), "Reusing site-issued cookies/session; continuing current page without forced reload")
+            handler.postDelayed({
+                if (!stopped && !userPaused && !authScreenOpen) {
+                    waitForPageSettle {
+                        tryDismissBlockingPopup { dismissed ->
+                            if (!dismissed) mapAndAct()
+                        }
+                    }
+                }
+            }, 500L)
+        } else {
+            record("LEARNING", "RESUMED", activeSite?.expectedHost.orEmpty(), "", "Resumed by user")
+            handler.postDelayed({ if (!stopped && !userPaused) mapAndAct() }, 350L)
+        }
     }
 
     private fun stopLearning() {

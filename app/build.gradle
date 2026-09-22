@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 33
-        versionName "6.25.0-smart-gates-teach-text"
+        versionCode 34
+        versionName "6.26.0-fuller-browser-view"
     }
 
     signingConfigs {

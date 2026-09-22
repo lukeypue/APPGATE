@@ -25,4 +25,23 @@ class LearningRuntimePolicyTest {
         assertEquals(5_000L, LearningRuntimePolicy.stalledForMs(now, lastProgress))
         assertFalse(LearningRuntimePolicy.shouldAutoSkip(LearningRuntimePolicy.stalledForMs(now, lastProgress), false))
     }
+
+    @Test
+    fun overnightLogsKeepFiftyThousandEvents() {
+        assertEquals(50_000, LearningRuntimePolicy.maxLogEvents)
+    }
+
+    @Test
+    fun repeatedRouteActionIsCappedSoExplorerBranchesOut() {
+        assertTrue(LearningRuntimePolicy.shouldTrySameRouteAction(0))
+        assertTrue(LearningRuntimePolicy.shouldTrySameRouteAction(2))
+        assertFalse(LearningRuntimePolicy.shouldTrySameRouteAction(3))
+    }
+
+    @Test
+    fun largeLogsArePersistedInBatchesInsteadOfRewrittenEveryEvent() {
+        assertFalse(LearningRuntimePolicy.shouldPersistLog(1, 1_000L))
+        assertTrue(LearningRuntimePolicy.shouldPersistLog(100, 1_000L))
+        assertTrue(LearningRuntimePolicy.shouldPersistLog(1, 15_000L))
+    }
 }

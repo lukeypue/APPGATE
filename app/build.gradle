@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 16
-        versionName "6.8.0-stable-signing-transition"
+        versionCode 17
+        versionName "6.9.0-filter-learning"
     }
 
     signingConfigs {

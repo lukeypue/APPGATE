@@ -25,6 +25,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.appgate.tv.sitebrain.ContinuousLearningSession
 import com.appgate.tv.sitebrain.ExplorerBudget
+import com.appgate.tv.sitebrain.FilterLearning
 import com.appgate.tv.sitebrain.LearningEvent
 import com.appgate.tv.sitebrain.LearningReportWriter
 import com.appgate.tv.sitebrain.SharedPreferencesSiteBrainStore
@@ -335,6 +336,20 @@ class BrowserActivity : AppCompatActivity() {
             result.onSuccess { observation ->
                 val line = siteBrainController.statusLine(observation)
                 siteBrainStatuses[observation.snapshot.host] = line
+                FilterLearning.discover(observation.snapshot).forEach { filter ->
+                    learningEvents += LearningEvent(
+                        timestamp = System.currentTimeMillis(),
+                        source = if (mode == ScanMode.SOURCES) currentName() else "Deep Search",
+                        host = observation.snapshot.host,
+                        pageType = observation.snapshot.pageType.name,
+                        route = observation.snapshot.routeSignature,
+                        action = "LEARN_FILTER",
+                        outcome = if (filter.value.isNullOrBlank()) "DISCOVERED" else "VALUE_OBSERVED",
+                        coverageBefore = observation.brain.coverageScore,
+                        coverageAfter = observation.brain.coverageScore,
+                        note = "name=${filter.name}; value=${filter.value.orEmpty()}; selector=${filter.locatorHints.firstOrNull().orEmpty()}; selected=${filter.selected}"
+                    )
+                }
                 if (!stopped) {
                     val first = status.text.toString().lineSequence().firstOrNull().orEmpty()
                     status.text = "$first\n$line"

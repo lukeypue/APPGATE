@@ -15,6 +15,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -63,6 +64,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var activeSessionId = 0L
     private var activeSite: LearningSite? = null
     private var lastCoverage = 0.0
+    private var awaitingInitialPage = false
     private val routeActionAttempts = HashMap<String, Int>()
     private val seenRoutesThisVisit = HashSet<String>()
     private var lastLogPersistAt = 0L
@@ -181,6 +183,11 @@ class OvernightLearningActivity : AppCompatActivity() {
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    if (awaitingInitialPage) webView.visibility = View.INVISIBLE
+                }
+
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     if (request == null || !request.isForMainFrame) return false
                     return allowNavigation(request.url.toString())
@@ -203,6 +210,11 @@ class OvernightLearningActivity : AppCompatActivity() {
                         record("STALE_OR_WRONG_HOST", "IGNORED", host, parsed.path.orEmpty(), "Ignored callback for another site/session")
                         return
                     }
+                    if (awaitingInitialPage) {
+                        webView.clearHistory()
+                        awaitingInitialPage = false
+                    }
+                    webView.visibility = View.VISIBLE
                     pagesThisSite++
                     val routeKey = "$host${parsed.path.orEmpty()}"
                     if (seenRoutesThisVisit.add(routeKey)) touchProgress()
@@ -216,7 +228,9 @@ class OvernightLearningActivity : AppCompatActivity() {
                     if (request?.isForMainFrame != true || stopped) return
                     val host = request.url.host.orEmpty()
                     if (!guard.accept(activeSessionId, host)) return
+                    webView.visibility = View.INVISIBLE
                     record("PAGE_ERROR", "ERROR", host, request.url.path.orEmpty(), error?.description?.toString().orEmpty())
+                    status.text = "Learning ${activeSite?.name ?: "site"}\nSite page did not load; retrying without showing stale content."
                     handler.postDelayed({ recoverOrMove("page error") }, 1200L)
                 }
             }
@@ -283,7 +297,9 @@ class OvernightLearningActivity : AppCompatActivity() {
         waitingForHuman = false
         authScreenOpen = false
         controller.markHumanResume()
-        status.text = "Learning ${site.name}\nOvernight mode: one site at a time, up to ${LearningRuntimePolicy.maxActionsPerVisit} actions before a scheduled revisit."
+        awaitingInitialPage = true
+        webView.visibility = View.INVISIBLE
+        status.text = "Learning ${site.name}\nLoading this site in a fresh visual session…"
         record("SITE_START", "STARTED", site.expectedHost, "", "root=${site.startUrl}; overnight=true")
         saveCheckpoint()
         webView.stopLoading()
@@ -458,6 +474,8 @@ class OvernightLearningActivity : AppCompatActivity() {
         if (stopped) return
         val site = activeSite
         webView.stopLoading()
+        awaitingInitialPage = true
+        webView.visibility = View.INVISIBLE
         waitingForHuman = false
         authScreenOpen = false
         actionInFlight = false

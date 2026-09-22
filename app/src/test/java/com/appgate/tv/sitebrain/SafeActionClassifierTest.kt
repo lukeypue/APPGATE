@@ -37,4 +37,11 @@ class SafeActionClassifierTest {
         assertEquals(SafetyClass.BLOCKED, SafeActionClassifier.classify(disabled))
         assertEquals(SafetyClass.BLOCKED, SafeActionClassifier.classify(password))
     }
+    @Test
+    fun dropdownsAndOptionsAreFilterActions() {
+        val select = SemanticElement("s", "select", "combobox", "Make", null, null, false, false, null, listOf("#make"))
+        val option = SemanticElement("o", "div", "option", "Ford", null, null, false, false, "Make Ford", listOf("[role=option]"))
+        assertEquals(ActionKind.APPLY_FILTER, SafeActionClassifier.inferActionKind(select))
+        assertEquals(ActionKind.APPLY_FILTER, SafeActionClassifier.inferActionKind(option))
+    }
 }

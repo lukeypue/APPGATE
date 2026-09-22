@@ -269,8 +269,7 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
     }
 
     private fun requiresHuman(snapshot: PageSnapshot): Boolean =
-        snapshot.challengeDetected || snapshot.pageType == PageType.CHALLENGE ||
-            (snapshot.pageType == PageType.LOGIN && snapshot.loginDetected)
+        snapshot.challengeDetected || snapshot.loginDetected
 
     private fun expectedPageType(kind: ActionKind): PageType? = when (kind) {
         ActionKind.SEARCH, ActionKind.APPLY_FILTER, ActionKind.SORT, ActionKind.PAGINATE -> PageType.RESULT_LIST

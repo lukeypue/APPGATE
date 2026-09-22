@@ -15,8 +15,8 @@ android {
         applicationId "com.aibrowser.universal"
         minSdk 26
         targetSdk 34
-        versionCode 17
-        versionName "6.9.0-filter-learning"
+        versionCode 18
+        versionName "6.10.0-overnight-depth"
     }
 
     signingConfigs {

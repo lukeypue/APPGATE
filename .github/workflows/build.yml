@@ -145,6 +145,12 @@ jobs:
           APK=$(find . -path '*/app/build/outputs/apk/release/app-release.apk' -print -quit)
           test -n "$APK"
           cp "$APK" AI-Browser-latest.apk
+          BUILD_FILE="${{ steps.proj.outputs.dir }}/app/build.gradle"
+          VERSION_CODE=$(sed -nE 's/.*versionCode[[:space:]]+([0-9]+).*/\1/p' "$BUILD_FILE" | head -1)
+          VERSION_NAME=$(sed -nE 's/.*versionName[[:space:]]+"([^"]+)".*/\1/p' "$BUILD_FILE" | head -1)
+          test -n "$VERSION_CODE"
+          test -n "$VERSION_NAME"
+          printf '{"versionCode":%s,"versionName":"%s","commit":"%s"}\n' "$VERSION_CODE" "$VERSION_NAME" "$GITHUB_SHA" > latest-version.json
 
       - name: Publish stable latest release for in-app Update button
         if: steps.signing.outputs.ready == 'true'
@@ -152,10 +158,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view ai-browser-latest >/dev/null 2>&1; then
-            gh release upload ai-browser-latest AI-Browser-latest.apk --clobber
+            gh release upload ai-browser-latest AI-Browser-latest.apk latest-version.json --clobber
             gh release edit ai-browser-latest --title "AI Browser Latest" --notes "Stable-signed AI Browser build. Future builds use the same signing identity so Android can update in place."
           else
-            gh release create ai-browser-latest AI-Browser-latest.apk --title "AI Browser Latest" --notes "Stable-signed AI Browser build. Future builds use the same signing identity so Android can update in place."
+            gh release create ai-browser-latest AI-Browser-latest.apk latest-version.json --title "AI Browser Latest" --notes "Stable-signed AI Browser build. Future builds use the same signing identity so Android can update in place."
           fi
 
       - name: Disable incompatible updater asset when stable signing is unavailable
@@ -165,6 +171,7 @@ jobs:
         run: |
           if gh release view ai-browser-latest >/dev/null 2>&1; then
             gh release delete-asset ai-browser-latest AI-Browser-latest.apk -y >/dev/null 2>&1 || true
+            gh release delete-asset ai-browser-latest latest-version.json -y >/dev/null 2>&1 || true
             gh release edit ai-browser-latest --title "AI Browser Latest" --notes "Update publishing is temporarily paused while persistent Android signing is being configured. Existing Site Brain data is not affected."
           fi
 

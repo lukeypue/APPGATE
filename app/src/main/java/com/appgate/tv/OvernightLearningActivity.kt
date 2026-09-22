@@ -149,6 +149,10 @@ class OvernightLearningActivity : AppCompatActivity() {
             savedPasses = runPrefs.getInt("passes", 0)
         )
         loadExistingLog()
+        val installedInfo = runCatching { packageManager.getPackageInfo(packageName, 0) }.getOrNull()
+        val installedVersionName = installedInfo?.versionName.orEmpty().ifBlank { "unknown" }
+        val installedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) installedInfo?.longVersionCode ?: 0L else @Suppress("DEPRECATION") (installedInfo?.versionCode?.toLong() ?: 0L)
+        record("APP_VERSION", "ACTIVE", "", "", "$installedVersionName ($installedVersionCode)")
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

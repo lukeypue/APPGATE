@@ -30,6 +30,18 @@ class LearningPlateauPolicyTest {
     }
 
     @Test
+    fun hardPlateauCapEndsUnproductiveLoop() {
+        assertTrue(
+            LearningPlateauPolicy.shouldMoveOn(
+                consecutivePlateaus = 8,
+                actionsThisSite = 0,
+                verifiedThisSite = 0,
+                elapsedMs = 90_000L
+            )
+        )
+    }
+
+    @Test
     fun timeBudgetCanStillEndAStuckSite() {
         assertTrue(
             LearningPlateauPolicy.shouldMoveOn(

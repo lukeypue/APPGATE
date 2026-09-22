@@ -105,6 +105,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var mainFrameLoading = false
     private var pageSettling = false
     private var lastHeartbeatSignature = ""
+    private var teachTextDialogOpen = false
 
     private val githubLogRequestPoller = object : Runnable {
         override fun run() {
@@ -739,8 +740,21 @@ class OvernightLearningActivity : AppCompatActivity() {
               }
               function capture(e){
                 if(!e.isTrusted || !window.SiteBrainTeachBridge) return;
-                var el=e.target && e.target.closest ? e.target.closest('button,a,input,select,[role="button"],[role="option"],[role="combobox"],[aria-label]') : e.target;
+                var el=e.target && e.target.closest ? e.target.closest('button,a,input,textarea,select,[contenteditable="true"],[role="button"],[role="option"],[role="combobox"],[aria-label]') : e.target;
                 if(!el) return;
+                var tag=(el.tagName||'').toLowerCase();
+                var type=(el.getAttribute('type')||'').toLowerCase();
+                var editable=(tag==='input' && type!=='password' && type!=='hidden' && type!=='file' && type!=='checkbox' && type!=='radio') || tag==='textarea' || el.getAttribute('contenteditable')==='true';
+                if(editable && e.type==='click'){
+                  SiteBrainTeachBridge.onEditableFocus(JSON.stringify({
+                    host:location.host.toLowerCase(),
+                    tag:tag,
+                    role:el.getAttribute('role')||'',
+                    label:clean(el.getAttribute('aria-label')||el.getAttribute('title')||el.getAttribute('placeholder')||el.getAttribute('name')||''),
+                    inputType:type,
+                    locator:locator(el)
+                  }));
+                }
                 var p=el.parentElement;
                 var payload={
                   host:location.host.toLowerCase(),
@@ -766,6 +780,73 @@ class OvernightLearningActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onHumanClick(json: String) {
             runOnUiThread { handleHumanClick(json) }
+        }
+
+        @JavascriptInterface
+        fun onEditableFocus(json: String) {
+            runOnUiThread { showTeachTextDialog(json) }
+        }
+    }
+
+    private fun showTeachTextDialog(json: String) {
+        if (!teachingMode || stopped || teachTextDialogOpen) return
+        val obj = runCatching { JSONObject(json) }.getOrNull() ?: return
+        val host = obj.optString("host")
+        if (!guard.accept(activeSessionId, host)) return
+        val locator = obj.optString("locator").takeIf { it.isNotBlank() } ?: return
+        val label = obj.optString("label").ifBlank { "search/text field" }.take(120)
+        val input = EditText(this).apply {
+            hint = "Type a safe example, e.g. rake"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+        }
+        teachTextDialogOpen = true
+        AlertDialog.Builder(this)
+            .setTitle("Teach text field")
+            .setMessage("Enter the example text you want Site Brain to learn for: $label")
+            .setView(input)
+            .setPositiveButton("ENTER") { _, _ ->
+                val value = input.text?.toString().orEmpty().trim()
+                if (value.isNotBlank()) injectTeachText(locator, value, label)
+            }
+            .setNegativeButton("CANCEL", null)
+            .setOnDismissListener { teachTextDialogOpen = false }
+            .show()
+    }
+
+    private fun injectTeachText(locator: String, value: String, label: String) {
+        val locatorJson = JSONObject.quote(locator)
+        val valueJson = JSONObject.quote(value)
+        val script = """
+            (function(){
+              var el=null;
+              try{ el=document.querySelector($locatorJson); }catch(e){}
+              if(!el) return 'MISSING';
+              try{ el.focus(); }catch(e){}
+              var tag=(el.tagName||'').toLowerCase();
+              if(tag==='input' || tag==='textarea'){
+                var proto=tag==='textarea'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+                var desc=Object.getOwnPropertyDescriptor(proto,'value');
+                if(desc && desc.set) desc.set.call(el,$valueJson); else el.value=$valueJson;
+              } else if(el.getAttribute('contenteditable')==='true'){
+                el.textContent=$valueJson;
+              } else return 'NOT_EDITABLE';
+              el.dispatchEvent(new Event('input',{bubbles:true}));
+              el.dispatchEvent(new Event('change',{bubbles:true}));
+              try{ el.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',bubbles:true})); }catch(e){}
+              return 'FILLED';
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(script) { raw ->
+            val ok = raw.orEmpty().uppercase().contains("FILLED")
+            if (ok) {
+                touchProgress()
+                record("HUMAN_DEMO", "TEXT_FILLED", activeSite?.expectedHost.orEmpty(), lastObservedSnapshot?.routeSignature.orEmpty(), "$label=[user example]")
+                handler.postDelayed({ refreshTeachingSnapshot() }, 400L)
+            } else {
+                record("HUMAN_DEMO", "TEXT_FILL_FAILED", activeSite?.expectedHost.orEmpty(), lastObservedSnapshot?.routeSignature.orEmpty(), label)
+                Toast.makeText(this, "That field changed before I could fill it. Tap it and try once more.", Toast.LENGTH_LONG).show()
+            }
         }
     }
 

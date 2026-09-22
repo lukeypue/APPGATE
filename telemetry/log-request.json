@@ -1,10 +1,7 @@
 {
-  "schemaVersion": 1,
-  "requestId": "review-2026-09-22-0550",
-  "requestedAt": "2026-09-22T05:50:00Z",
-  "include": [
-    "site_brain_learning_log.json",
-    "site_brain_capability_gaps.jsonl"
-  ],
-  "reason": "Review both live learning streams after AI Teacher activation, varied autonomous searches, popup fixes, and capability-gap logging. Check target alignment, repeated loops, filters/dropdowns, AI errors, and useful verified progress."
+  "requestId": "review-2026-09-22-1155",
+  "requestedAt": "2026-09-22T17:55:00Z",
+  "includeLearningLog": true,
+  "includeCapabilityGapLog": true,
+  "reason": "Review Facebook Gecko pilot black-screen/render behavior plus current 31-site learning state after Gecko rollout."
 }

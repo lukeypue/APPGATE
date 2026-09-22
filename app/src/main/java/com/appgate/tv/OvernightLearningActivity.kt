@@ -909,8 +909,17 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun handlePlateau(host: String, route: String) {
         consecutivePlateaus++
-        if (consecutivePlateaus >= 3) gapLogger.record("PLATEAU", activeSite?.name.orEmpty(), host, route, "Repeated plateau $consecutivePlateaus")
-        record("SITE_PLATEAU", "CHECKPOINTED", host, route, "Plateau $consecutivePlateaus; recovery continues until watchdog/budget decides to move on")
+        if (consecutivePlateaus == 3 || consecutivePlateaus % 5 == 0) {
+            gapLogger.record("PLATEAU", activeSite?.name.orEmpty(), host, route, "Repeated plateau $consecutivePlateaus")
+        }
+        val elapsed = System.currentTimeMillis() - siteStartedAt
+        if (LearningPlateauPolicy.shouldMoveOn(consecutivePlateaus, actionsThisSite, verifiedThisSite, elapsed)) {
+            record("SITE_PLATEAU", "MOVING_ON", host, route, "Plateau $consecutivePlateaus reached recovery limit; checkpointing and revisiting this site on a later pass")
+            saveCheckpoint()
+            moveToNextSite("plateau recovery limit reached")
+            return
+        }
+        record("SITE_PLATEAU", "CHECKPOINTED", host, route, "Plateau $consecutivePlateaus; trying a different recovery path")
         saveCheckpoint()
         controller.markHumanResume()
         when {

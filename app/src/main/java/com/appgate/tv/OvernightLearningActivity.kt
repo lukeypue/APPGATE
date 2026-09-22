@@ -48,6 +48,7 @@ import com.appgate.tv.sitebrain.CapabilityGapLogger
 import com.appgate.tv.sitebrain.AiTeacherKeyStore
 import com.appgate.tv.sitebrain.AiTeacherClient
 import com.appgate.tv.sitebrain.SiteBrainObservation
+import com.appgate.tv.sitebrain.LearningQueryGenerator
 import org.json.JSONObject
 import java.io.File
 
@@ -406,7 +407,8 @@ class OvernightLearningActivity : AppCompatActivity() {
                     actionsTaken = actionsThisSite,
                     startedAt = siteStartedAt
                 )
-                val prepared = controller.prepareExploration(observation, budget, "site brain training")
+                val trainingQuery = LearningQueryGenerator.nextQuery(site.key, site.name, site.expectedHost, actionsThisSite)
+                val prepared = controller.prepareExploration(observation, budget, trainingQuery)
                 if (prepared == null) {
                     if (!requestAiTeacher(observation, "No safe unexplored action was available")) {
                         handlePlateau(actualHost, observation.snapshot.routeSignature)
@@ -523,7 +525,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                                 current,
                                 suggestion.targetElementId,
                                 suggestion.actionKind,
-                                "site brain training"
+                                LearningQueryGenerator.nextQuery(activeSite?.key.orEmpty(), activeSite?.name.orEmpty(), current.snapshot.host, actionsThisSite)
                             )
                             if (prepared == null) {
                                 gapLogger.record("AI_TEACHER_UNUSABLE", source, host, route, detail)

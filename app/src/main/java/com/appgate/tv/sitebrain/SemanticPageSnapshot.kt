@@ -32,9 +32,14 @@ object SemanticPageSnapshot {
             if(test) return '[data-testid="'+test.replace(/"/g,'')+'"]';
             var name=el.getAttribute('name');
             if(name) return el.tagName.toLowerCase()+'[name="'+name.replace(/"/g,'')+'"]';
+            var aria=el.getAttribute('aria-label');
+            var role=el.getAttribute('role');
+            if(aria && role) return '[role="'+role.replace(/"/g,'')+'"][aria-label="'+aria.replace(/"/g,'')+'"]';
+            if(aria) return '[aria-label="'+aria.replace(/"/g,'')+'"]';
+            if(role) return '[role="'+role.replace(/"/g,'')+'"]';
             return el.tagName.toLowerCase();
           }
-          var selectors='a[href],button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[aria-label]';
+          var selectors='a[href],button,input,select,textarea,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="combobox"],[role="listbox"],[role="option"],[aria-haspopup="listbox"],[aria-expanded],[aria-label]';
           var elements=[];
           Array.from(document.querySelectorAll(selectors)).slice(0,700).forEach(function(el,i){
             if(!visible(el)) return;
@@ -55,7 +60,8 @@ object SemanticPageSnapshot {
               disabled:!!(el.disabled||el.getAttribute('aria-disabled')==='true'),
               nearbyText:near,
               locatorHints:[cssHint(el)],
-              currentValue:(el.tagName==='SELECT' ? clean(el.options && el.selectedIndex>=0 ? el.options[el.selectedIndex].text : el.value) : clean(el.value||el.getAttribute('aria-valuetext')||''))
+              currentValue:(el.tagName==='SELECT' ? clean(el.options && el.selectedIndex>=0 ? el.options[el.selectedIndex].text : el.value) : clean(el.value||el.getAttribute('aria-valuetext')||el.getAttribute('aria-selected')||'')),
+              choices:(el.tagName==='SELECT' && el.options ? Array.from(el.options).map(function(o){return clean(o.text||o.value||'');}).filter(Boolean).slice(0,120) : [])
             });
           });
           var headings=Array.from(document.querySelectorAll('h1,h2,h3,[role="heading"]')).filter(visible).map(function(h){return clean(h.innerText||h.textContent||'').slice(0,160);}).filter(Boolean).slice(0,50);
@@ -144,7 +150,8 @@ object SemanticPageSnapshot {
                 disabled = e.optBoolean("disabled", false),
                 nearbyText = e.optNullableString("nearbyText"),
                 locatorHints = e.optJSONArray("locatorHints").toStringList(),
-                currentValue = e.optNullableString("currentValue")
+                currentValue = e.optNullableString("currentValue"),
+                choices = e.optJSONArray("choices").toStringList()
             )
         }
         return out

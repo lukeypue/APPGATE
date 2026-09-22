@@ -63,6 +63,10 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var activeSessionId = 0L
     private var activeSite: LearningSite? = null
     private var lastCoverage = 0.0
+    private val routeActionAttempts = HashMap<String, Int>()
+    private val seenRoutesThisVisit = HashSet<String>()
+    private var lastLogPersistAt = 0L
+    private var eventsAtLastPersist = 0
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -160,7 +164,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         root.addView(TextView(this).apply {
             setTextColor(Color.rgb(170, 185, 205))
             textSize = 12f
-            text = "Overnight mode keeps a foreground learning service and CPU wake lock active so training can continue with the screen off. It trains one site at a time, checkpoints constantly, and auto-skips a site/state after 30 seconds without useful progress. Login/CAPTCHA/2FA still remain human-only."
+            text = "Overnight mode keeps a foreground learning service and CPU wake lock active so training can continue with the screen off. It trains one site at a time, keeps up to 50,000 learning events, checkpoints constantly, and auto-skips a site/state after 30 seconds without useful progress. Login/CAPTCHA/2FA still remain human-only."
             setPadding(0, 6, 0, 10)
         })
 
@@ -200,7 +204,8 @@ class OvernightLearningActivity : AppCompatActivity() {
                         return
                     }
                     pagesThisSite++
-                    touchProgress()
+                    val routeKey = "$host${parsed.path.orEmpty()}"
+                    if (seenRoutesThisVisit.add(routeKey)) touchProgress()
                     record("PAGE_LOADED", "OBSERVED", host, parsed.path.orEmpty(), actual)
                     if (actionInFlight) handler.postDelayed({ verifyAction() }, 900L)
                     else handler.postDelayed({ mapAndAct() }, 900L)
@@ -270,6 +275,8 @@ class OvernightLearningActivity : AppCompatActivity() {
         verifiedThisSite = 0
         consecutivePlateaus = 0
         lastCoverage = 0.0
+        routeActionAttempts.clear()
+        seenRoutesThisVisit.clear()
         siteStartedAt = System.currentTimeMillis()
         lastProgressAt = siteStartedAt
         actionInFlight = false
@@ -326,6 +333,21 @@ class OvernightLearningActivity : AppCompatActivity() {
                     handlePlateau(actualHost, observation.snapshot.routeSignature)
                     return@onSuccess
                 }
+
+                val attemptKey = "$actualHost|${observation.snapshot.routeSignature}|${prepared.semanticIntent}"
+                val previousAttempts = routeActionAttempts[attemptKey] ?: 0
+                if (!LearningRuntimePolicy.shouldTrySameRouteAction(previousAttempts)) {
+                    record(
+                        "DUPLICATE_BRANCH",
+                        "SUPPRESSED",
+                        actualHost,
+                        observation.snapshot.routeSignature,
+                        "Already tried ${prepared.semanticIntent} $previousAttempts times on this route; forcing a different branch"
+                    )
+                    handlePlateau(actualHost, observation.snapshot.routeSignature)
+                    return@onSuccess
+                }
+                routeActionAttempts[attemptKey] = previousAttempts + 1
 
                 actionInFlight = true
                 actionsThisSite++
@@ -415,7 +437,18 @@ class OvernightLearningActivity : AppCompatActivity() {
         waitingForHuman = false
         authScreenOpen = false
         record("SITE_CHECKPOINT", "SAVED", site?.expectedHost.orEmpty(), "", reason)
+        val beforePasses = tracker?.completedPasses ?: 0
         tracker?.nextSite()
+        val afterPasses = tracker?.completedPasses ?: beforePasses
+        if (afterPasses > beforePasses) {
+            record(
+                "SITE_PASS",
+                "COMPLETED",
+                site?.expectedHost.orEmpty(),
+                "",
+                "Completed full ${sites.size}-site sweep #$afterPasses; starting next deepening pass"
+            )
+        }
         saveCheckpoint()
         updateCounters()
         handler.postDelayed({ startCurrentSite() }, 900L)
@@ -470,6 +503,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         CookieManager.getInstance().flush()
         record("LEARNING", "STOPPED", activeSite?.expectedHost.orEmpty(), "", "Stopped by user; checkpoint retained")
         saveCheckpoint()
+        persistLog(force = true)
         stopService(Intent(this, LearningKeepAliveService::class.java))
         pauseButton.isEnabled = false
         resumeButton.isEnabled = false
@@ -509,7 +543,7 @@ class OvernightLearningActivity : AppCompatActivity() {
             coverageAfter = coverageAfter,
             note = note
         )
-        while (events.size > 10_000) events.removeAt(0)
+        while (events.size > LearningRuntimePolicy.maxLogEvents) events.removeAt(0)
         persistLog()
         updateCounters()
     }
@@ -517,13 +551,23 @@ class OvernightLearningActivity : AppCompatActivity() {
     private fun loadExistingLog() {
         runCatching {
             val file = File(filesDir, LOG_FILE)
-            if (file.exists()) events.addAll(LearningReportWriter.decode(file.readText()).takeLast(9000))
+            if (file.exists()) {
+                events.addAll(LearningReportWriter.decode(file.readText()).takeLast(LearningRuntimePolicy.maxLogEvents))
+                eventsAtLastPersist = events.size
+                lastLogPersistAt = System.currentTimeMillis()
+            }
         }
     }
 
-    private fun persistLog() {
+    private fun persistLog(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val eventsSince = (events.size - eventsAtLastPersist).coerceAtLeast(0)
+        val elapsed = (now - lastLogPersistAt).coerceAtLeast(0L)
+        if (!force && !LearningRuntimePolicy.shouldPersistLog(eventsSince, elapsed)) return
         runCatching {
             File(filesDir, LOG_FILE).writeText(LearningReportWriter.encode(events, "site_brain_learning_run"))
+            eventsAtLastPersist = events.size
+            lastLogPersistAt = now
         }
     }
 
@@ -540,7 +584,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     }
 
     private fun shareLogs() {
-        persistLog()
+        persistLog(force = true)
         val file = File(filesDir, LOG_FILE)
         if (!file.exists()) {
             Toast.makeText(this, "No learning log file exists yet.", Toast.LENGTH_LONG).show()
@@ -580,6 +624,7 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         saveCheckpoint()
+        persistLog(force = true)
         if (stopped) handler.removeCallbacksAndMessages(null)
         runCatching { CookieManager.getInstance().flush() }
         super.onDestroy()

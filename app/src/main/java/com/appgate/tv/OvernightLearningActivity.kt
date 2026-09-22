@@ -502,7 +502,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                     gapLogger.record("AI_TEACHER_ERROR", source, host, route, error.message.orEmpty())
                     record("AI_TEACHER", "ERROR", host, route, error.message.orEmpty())
                     handlePlateau(host, route)
-                }.onSuccess { suggestion ->
+                }.onSuccess teacherSuccess@ { suggestion ->
                     val detail = buildString {
                         append(suggestion.diagnosis)
                         suggestion.capabilityGap?.let { append(" | gap=").append(it) }
@@ -511,14 +511,14 @@ class OvernightLearningActivity : AppCompatActivity() {
                     if (suggestion.needsEngineCode || suggestion.actionKind == null || suggestion.targetElementId == null) {
                         gapLogger.record("AI_ENGINEER_NEEDED", source, host, route, detail)
                         handlePlateau(host, route)
-                        return@onSuccess
+                        return@teacherSuccess
                     }
                     controller.observe(webView) { currentResult ->
                         currentResult.onFailure {
                             gapLogger.record("AI_TEACHER_RECHECK_FAILED", source, host, route, it.message.orEmpty())
                             handler.postDelayed({ mapAndAct() }, 600L)
-                        }.onSuccess { current ->
-                            if (!guard.accept(activeSessionId, current.snapshot.host)) return@onSuccess
+                        }.onSuccess currentSuccess@ { current ->
+                            if (!guard.accept(activeSessionId, current.snapshot.host)) return@currentSuccess
                             val prepared = controller.prepareTeacherExploration(
                                 current,
                                 suggestion.targetElementId,
@@ -528,7 +528,7 @@ class OvernightLearningActivity : AppCompatActivity() {
                             if (prepared == null) {
                                 gapLogger.record("AI_TEACHER_UNUSABLE", source, host, route, detail)
                                 handlePlateau(host, route)
-                                return@onSuccess
+                                return@currentSuccess
                             }
                             actionInFlight = true
                             actionsThisSite++

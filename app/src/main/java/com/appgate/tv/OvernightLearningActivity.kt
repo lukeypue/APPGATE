@@ -22,6 +22,9 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.EditText
+import android.text.InputType
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import com.appgate.tv.sitebrain.ExplorerBudget
@@ -42,6 +45,9 @@ import com.appgate.tv.sitebrain.SafeActionClassifier
 import com.appgate.tv.sitebrain.ActionKind
 import com.appgate.tv.sitebrain.SafetyClass
 import com.appgate.tv.sitebrain.CapabilityGapLogger
+import com.appgate.tv.sitebrain.AiTeacherKeyStore
+import com.appgate.tv.sitebrain.AiTeacherClient
+import com.appgate.tv.sitebrain.SiteBrainObservation
 import org.json.JSONObject
 import java.io.File
 
@@ -53,6 +59,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private lateinit var resumeButton: Button
     private lateinit var skipButton: Button
     private lateinit var teachButton: Button
+    private lateinit var aiTeacherButton: Button
     private lateinit var controller: WebViewSiteBrainController
     private lateinit var brainRepository: SiteBrainRepository
     private lateinit var gapLogger: CapabilityGapLogger
@@ -85,6 +92,8 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var teachingMode = false
     private var lastHumanTouchAt = 0L
     private var lastObservedSnapshot: PageSnapshot? = null
+    private var teacherCallInFlight = false
+    private var lastTeacherCallAt = 0L
 
     private val watchdog = object : Runnable {
         override fun run() {
@@ -175,6 +184,11 @@ class OvernightLearningActivity : AppCompatActivity() {
             setOnClickListener { toggleTeachMode() }
         }
         root.addView(teachButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        aiTeacherButton = Button(this).apply {
+            setOnClickListener { showAiTeacherKeyDialog() }
+        }
+        root.addView(aiTeacherButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        updateAiTeacherButton()
 
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row2.addView(Button(this).apply {
@@ -394,7 +408,9 @@ class OvernightLearningActivity : AppCompatActivity() {
                 )
                 val prepared = controller.prepareExploration(observation, budget, "site brain training")
                 if (prepared == null) {
-                    handlePlateau(actualHost, observation.snapshot.routeSignature)
+                    if (!requestAiTeacher(observation, "No safe unexplored action was available")) {
+                        handlePlateau(actualHost, observation.snapshot.routeSignature)
+                    }
                     return@onSuccess
                 }
 
@@ -421,13 +437,117 @@ class OvernightLearningActivity : AppCompatActivity() {
                         actionInFlight = false
                         gapLogger.record("ACTION_REJECTED", site.name, actualHost, observation.snapshot.routeSignature, prepared.semanticIntent)
                         record(prepared.semanticIntent, "REJECTED", actualHost, observation.snapshot.routeSignature, "executor did not accept action")
-                        handler.postDelayed({ mapAndAct() }, 650L)
+                        if (!requestAiTeacher(observation, "Executor rejected ${prepared.semanticIntent}")) {
+                            handler.postDelayed({ mapAndAct() }, 650L)
+                        }
                     } else {
                         handler.postDelayed({ verifyAction() }, 1100L)
                     }
                 }
             }
         }
+    }
+
+    private fun updateAiTeacherButton() {
+        if (!::aiTeacherButton.isInitialized) return
+        aiTeacherButton.text = if (AiTeacherKeyStore.isConfigured(this)) "AI TEACHER: ON" else "SET AI TEACHER KEY"
+    }
+
+    private fun showAiTeacherKeyDialog() {
+        val input = EditText(this).apply {
+            hint = "OpenAI API key"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("AI Teacher")
+            .setMessage("For this test build the key is encrypted with Android Keystore and stays on this phone. The teacher sends only generic site/control structure, not cookies, passwords, or full browsing text.")
+            .setView(input)
+            .setPositiveButton("SAVE") { _, _ ->
+                val key = input.text?.toString().orEmpty().trim()
+                if (key.isNotBlank()) {
+                    runCatching { AiTeacherKeyStore.save(this, key) }
+                        .onSuccess { Toast.makeText(this, "AI Teacher enabled.", Toast.LENGTH_SHORT).show() }
+                        .onFailure { Toast.makeText(this, "Could not save the AI Teacher key.", Toast.LENGTH_LONG).show() }
+                    updateAiTeacherButton()
+                }
+            }
+            .setNegativeButton("CANCEL", null)
+        if (AiTeacherKeyStore.isConfigured(this)) {
+            dialog.setNeutralButton("CLEAR KEY") { _, _ ->
+                AiTeacherKeyStore.clear(this)
+                updateAiTeacherButton()
+                Toast.makeText(this, "AI Teacher disabled.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun requestAiTeacher(observation: SiteBrainObservation, reason: String): Boolean {
+        val key = AiTeacherKeyStore.load(this) ?: return false
+        val now = System.currentTimeMillis()
+        if (teacherCallInFlight || now - lastTeacherCallAt < AI_TEACHER_COOLDOWN_MS) return false
+        teacherCallInFlight = true
+        lastTeacherCallAt = now
+        val source = activeSite?.name.orEmpty()
+        val host = observation.snapshot.host
+        val route = observation.snapshot.routeSignature
+        status.text = "Learning ${activeSite?.name ?: "site"}\nAI Teacher is studying a hard control…"
+        record("AI_TEACHER", "REQUESTED", host, route, reason)
+        AiTeacherClient.suggest(key, observation.snapshot, reason) { result ->
+            runOnUiThread {
+                teacherCallInFlight = false
+                if (stopped || userPaused || teachingMode || authScreenOpen) return@runOnUiThread
+                result.onFailure { error ->
+                    gapLogger.record("AI_TEACHER_ERROR", source, host, route, error.message.orEmpty())
+                    record("AI_TEACHER", "ERROR", host, route, error.message.orEmpty())
+                    handlePlateau(host, route)
+                }.onSuccess { suggestion ->
+                    val detail = buildString {
+                        append(suggestion.diagnosis)
+                        suggestion.capabilityGap?.let { append(" | gap=").append(it) }
+                    }
+                    record("AI_TEACHER", "ANSWERED", host, route, detail)
+                    if (suggestion.needsEngineCode || suggestion.actionKind == null || suggestion.targetElementId == null) {
+                        gapLogger.record("AI_ENGINEER_NEEDED", source, host, route, detail)
+                        handlePlateau(host, route)
+                        return@onSuccess
+                    }
+                    controller.observe(webView) { currentResult ->
+                        currentResult.onFailure {
+                            gapLogger.record("AI_TEACHER_RECHECK_FAILED", source, host, route, it.message.orEmpty())
+                            handler.postDelayed({ mapAndAct() }, 600L)
+                        }.onSuccess { current ->
+                            if (!guard.accept(activeSessionId, current.snapshot.host)) return@onSuccess
+                            val prepared = controller.prepareTeacherExploration(
+                                current,
+                                suggestion.targetElementId,
+                                suggestion.actionKind,
+                                "site brain training"
+                            )
+                            if (prepared == null) {
+                                gapLogger.record("AI_TEACHER_UNUSABLE", source, host, route, detail)
+                                handlePlateau(host, route)
+                                return@onSuccess
+                            }
+                            actionInFlight = true
+                            actionsThisSite++
+                            record(prepared.semanticIntent, "AI_TEACHER_ATTEMPTED", current.snapshot.host, current.snapshot.routeSignature, detail)
+                            controller.executePrepared(webView, prepared) { accepted ->
+                                if (!accepted) {
+                                    actionInFlight = false
+                                    gapLogger.record("AI_TEACHER_ACTION_REJECTED", source, host, route, prepared.semanticIntent)
+                                    handler.postDelayed({ mapAndAct() }, 650L)
+                                } else {
+                                    handler.postDelayed({ verifyAction() }, 1100L)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true
     }
 
     private fun tryDismissBlockingPopup(done: (Boolean) -> Unit) {
@@ -865,5 +985,6 @@ class OvernightLearningActivity : AppCompatActivity() {
         private const val AUTH_REQUEST = 4201
         private const val LOG_FILE = "site_brain_learning_log.json"
         private const val WATCHDOG_POLL_MS = 5_000L
+        private const val AI_TEACHER_COOLDOWN_MS = 45_000L
     }
 }

@@ -1,7 +1,10 @@
 {
+  "schemaVersion": 1,
   "requestId": "review-2026-09-22-1155",
   "requestedAt": "2026-09-22T17:55:00Z",
-  "includeLearningLog": true,
-  "includeCapabilityGapLog": true,
+  "include": [
+    "site_brain_learning_log.json",
+    "site_brain_capability_gaps.jsonl"
+  ],
   "reason": "Review Facebook Gecko pilot black-screen/render behavior plus current 31-site learning state after Gecko rollout."
 }

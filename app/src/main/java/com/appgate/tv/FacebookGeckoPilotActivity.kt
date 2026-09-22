@@ -2,6 +2,8 @@ package com.appgate.tv
 
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -19,7 +21,9 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
     private lateinit var bridge: GeckoSiteBrainBridge
     private lateinit var status: TextView
     private val miniBrain = FacebookMarketplaceMiniBrain()
+    private val handler = Handler(Looper.getMainLooper())
     private var lastSnapshot: JSONObject? = null
+    private var firstSnapshotScheduled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,8 +94,16 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
     private fun handleBridgeMessage(message: JSONObject) {
         when (message.optString("type")) {
             "BRIDGE_READY" -> {
-                status.text = "Facebook Mini Brain connected. Waiting for Marketplace to settle…"
-                bridge.requestSnapshot()
+                status.text = "Facebook Mini Brain connected. Letting Marketplace finish rendering…"
+                if (!firstSnapshotScheduled) {
+                    firstSnapshotScheduled = true
+                    handler.postDelayed({
+                        if (!isFinishing && !isDestroyed) {
+                            status.text = "Facebook Mini Brain connected. Taking a lightweight snapshot…"
+                            bridge.requestSnapshot()
+                        }
+                    }, 5_000L)
+                }
             }
             "SNAPSHOT" -> {
                 lastSnapshot = message
@@ -133,6 +145,7 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         if (::geckoView.isInitialized) runCatching { geckoView.releaseSession() }
         if (::session.isInitialized) runCatching { session.close() }
         super.onDestroy()

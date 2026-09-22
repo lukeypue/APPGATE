@@ -19,12 +19,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Require OpenAI API key
-        if: ${{ secrets.OPENAI_API_KEY == '' }}
-        run: |
-          echo "OPENAI_API_KEY is not configured. No AI code change was attempted."
-          exit 1
-
       - name: Check out trusted branch
         uses: actions/checkout@v5
         with:
@@ -171,10 +165,6 @@ jobs:
     outputs:
       verdict: ${{ steps.verdict.outputs.verdict }}
     steps:
-      - name: Require OpenAI API key
-        if: ${{ secrets.OPENAI_API_KEY == '' }}
-        run: exit 1
-
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.test_and_pr.outputs.branch }}

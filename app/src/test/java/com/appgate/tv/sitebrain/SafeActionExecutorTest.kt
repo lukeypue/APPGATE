@@ -16,6 +16,19 @@ class SafeActionExecutorTest {
         assertTrue(js.contains("Ford Expedition"))
     }
 
+    @Test fun nativeSelectFilterChoosesAndDispatchesChange() {
+        val element = SemanticElement(
+            id = "make", tag = "select", role = "combobox", label = "Make",
+            href = null, inputType = null, selected = false, disabled = false,
+            nearbyText = "Vehicle make", locatorHints = listOf("#make"),
+            currentValue = "Any", choices = listOf("Any", "Ford", "Toyota")
+        )
+        val js = SafeActionExecutor.javascriptFor(element, ActionKind.APPLY_FILTER, null, "cars.ksl.com")
+        assertNotNull(js)
+        assertTrue(js!!.contains("SELECTED"))
+        assertTrue(js.contains("new Event('change'"))
+    }
+
     @Test fun externalHostHrefIsRejected() {
         val element = SemanticElement(
             id = "x", tag = "a", role = "link", label = "View details",

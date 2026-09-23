@@ -24,6 +24,9 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastSnapshot: JSONObject? = null
     private var firstSnapshotScheduled = false
+    private var autoSteps = 0
+    private val attemptedActions = linkedSetOf<String>()
+    private val maxAutoSteps = 12
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,7 +105,7 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                             status.text = "Facebook Mini Brain connected. Taking a lightweight snapshot…"
                             bridge.requestSnapshot()
                         }
-                    }, 5_000L)
+                    }, 2_500L)
                 }
             }
             "SNAPSHOT" -> {
@@ -132,6 +135,32 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                         append("\n").append(decision.reason)
                     } else {
                         append("No reusable Facebook action chosen yet.")
+                    }
+                }
+
+                // Facebook Marketplace continuously renders in the background, so advance
+                // through safe reusable controls instead of waiting for a page-finished state.
+                if (decision != null && autoSteps < maxAutoSteps) {
+                    val chosen = list.firstOrNull { it.id == decision.controlId }
+                    val signature = decision.intent.name + ":" +
+                        chosen?.label.orEmpty().lowercase().take(80)
+                    if (attemptedActions.add(signature)) {
+                        autoSteps += 1
+                        handler.postDelayed({
+                            if (!isFinishing && !isDestroyed) {
+                                status.text = "Facebook Mini Brain learning " +
+                                    decision.intent.name.lowercase() +
+                                    " controls… step $autoSteps/$maxAutoSteps"
+                                bridge.click(decision.controlId)
+                                handler.postDelayed({
+                                    if (!isFinishing && !isDestroyed) bridge.requestSnapshot()
+                                }, 1_800L)
+                            }
+                        }, 650L)
+                    } else {
+                        handler.postDelayed({
+                            if (!isFinishing && !isDestroyed) bridge.requestSnapshot()
+                        }, 2_000L)
                     }
                 }
             }

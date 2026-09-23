@@ -7,8 +7,8 @@ import org.junit.Test
 
 class LearningRuntimePolicyTest {
     @Test
-    fun overnightModeDoesNotStopAtOld150ActionLimit() {
-        assertTrue(LearningRuntimePolicy.maxActionsPerVisit >= 2000)
+    fun overnightModeUsesBoundedActionBudgetForStability() {
+        assertEquals(1200, LearningRuntimePolicy.maxActionsPerVisit)
     }
 
     @Test
@@ -27,8 +27,8 @@ class LearningRuntimePolicyTest {
     }
 
     @Test
-    fun overnightLogsKeepFiftyThousandEvents() {
-        assertEquals(50_000, LearningRuntimePolicy.maxLogEvents)
+    fun overnightLogsAreBoundedToPreventMemoryGrowth() {
+        assertEquals(8_000, LearningRuntimePolicy.maxLogEvents)
     }
 
     @Test
@@ -41,7 +41,8 @@ class LearningRuntimePolicyTest {
     @Test
     fun largeLogsArePersistedInBatchesInsteadOfRewrittenEveryEvent() {
         assertFalse(LearningRuntimePolicy.shouldPersistLog(1, 1_000L))
-        assertTrue(LearningRuntimePolicy.shouldPersistLog(100, 1_000L))
-        assertTrue(LearningRuntimePolicy.shouldPersistLog(1, 15_000L))
+        assertFalse(LearningRuntimePolicy.shouldPersistLog(100, 1_000L))
+        assertTrue(LearningRuntimePolicy.shouldPersistLog(250, 1_000L))
+        assertTrue(LearningRuntimePolicy.shouldPersistLog(1, 60_000L))
     }
 }

@@ -288,7 +288,8 @@ class OvernightLearningActivity : AppCompatActivity() {
             settings.domStorageEnabled = true
             settings.cacheMode = WebSettings.LOAD_DEFAULT
             settings.databaseEnabled = true
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) settings.offscreenPreRaster = true
+            // Avoid pre-rendering off-screen pages during long runs; it can retain large render surfaces.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) settings.offscreenPreRaster = false
             // Overnight learning does not need product photos, hero art, or ad images.
             // Skipping them saves bandwidth/CPU while preserving DOM text, links, filters,
             // forms, scripts, and the controls Site Brain actually learns.
@@ -518,7 +519,11 @@ class OvernightLearningActivity : AppCompatActivity() {
         record("SITE_START", "STARTED", site.expectedHost, "", "root=${site.startUrl}; overnight=true")
         saveCheckpoint()
         webView.stopLoading()
-        webView.loadUrl(site.startUrl)
+        // Trim the previous site's render tree before a long cross-site learning hop.
+        webView.loadUrl("about:blank")
+        handler.postDelayed({
+            if (!stopped && !userPaused && activeSessionId == session.id) webView.loadUrl(site.startUrl)
+        }, 120L)
     }
 
     private fun mapAndAct() {
@@ -1295,8 +1300,15 @@ class OvernightLearningActivity : AppCompatActivity() {
     override fun onDestroy() {
         saveCheckpoint()
         persistLog(force = true)
-        if (stopped) handler.removeCallbacksAndMessages(null)
+        handler.removeCallbacksAndMessages(null)
         runCatching { CookieManager.getInstance().flush() }
+        if (::webView.isInitialized) {
+            runCatching { webView.stopLoading() }
+            runCatching { webView.loadUrl("about:blank") }
+            runCatching { webView.removeAllViews() }
+            runCatching { webView.destroy() }
+        }
+        stopService(Intent(this, LearningKeepAliveService::class.java))
         super.onDestroy()
     }
 

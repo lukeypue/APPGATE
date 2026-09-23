@@ -151,7 +151,7 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                                 status.text = "Facebook Mini Brain learning " +
                                     decision.intent.name.lowercase() +
                                     " controls… step $autoSteps/$maxAutoSteps"
-                                bridge.click(decision.controlId)
+                                decision.controlId?.let { bridge.click(it) }
                                 handler.postDelayed({
                                     if (!isFinishing && !isDestroyed) bridge.requestSnapshot()
                                 }, 1_800L)

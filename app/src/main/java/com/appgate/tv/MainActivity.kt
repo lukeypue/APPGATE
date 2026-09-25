@@ -127,7 +127,7 @@ class MainActivity : AppCompatActivity() {
         refreshSummary()
 
         column.addView(text("What is new in $versionName", 19f, Color.WHITE, true).apply { setPadding(0, 20, 0, 8) })
-        column.addView(text("• AI Teacher can be configured directly from the main screen.\n• TEACH ME mode lets you demonstrate difficult safe controls.\n• Safe popup dismissal helps clear blocking ads and overlays.\n• Dropdown/filter learning was expanded for make/model/year-style controls.\n• Learning logs can retain up to 50,000 events, plus a separate AI capability-gap log.\n• The updater now checks version numbers and says when you are already up to date.\n• Login, CAPTCHA, 2FA, payment and destructive actions remain human-only.", 14f, Color.rgb(180, 195, 215)))
+        column.addView(text("• AI Teacher can be configured directly from the main screen.\n• TEACH ME mode lets you demonstrate difficult safe controls.\n• Safe popup dismissal helps clear blocking ads and overlays.\n• Dropdown/filter learning was expanded for make/model/year-style controls.\n• Learning logs retain the newest 8,000 events and continue rolling forward, plus a separate AI capability-gap log.\n• The updater now checks version numbers and says when you are already up to date.\n• Login, CAPTCHA, 2FA, payment and destructive actions remain human-only.", 14f, Color.rgb(180, 195, 215)))
 
         root.addView(column)
         setContentView(root)

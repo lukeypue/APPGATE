@@ -434,14 +434,14 @@ class OvernightLearningActivity : AppCompatActivity() {
 
                 val elapsed = System.currentTimeMillis() - startedAt
                 val settled = elapsed >= 2_400L && stableSamples >= 3
-                val hardCap = elapsed >= 12_000L
+                val hardCap = elapsed >= 7_000L
 
                 if (settled || hardCap) {
                     pageSettling = false
                     touchProgress()
                     record(
                         "PAGE_SETTLE",
-                        if (settled) "STABLE" else "TIMEOUT",
+                        if (settled) "STABLE" else "TIMEOUT_RECOVERING",
                         activeSite?.expectedHost.orEmpty(),
                         lastObservedSnapshot?.routeSignature.orEmpty(),
                         "waited=" + elapsed + "ms; stableSamples=" + stableSamples + "; busy=" + busy

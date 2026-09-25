@@ -94,7 +94,8 @@ class OvernightLearningActivity : AppCompatActivity() {
     private val routeActionAttempts = HashMap<String, Int>()
     private val seenRoutesThisVisit = HashSet<String>()
     private var lastLogPersistAt = 0L
-    private var eventsAtLastPersist = 0
+    private var unpersistedEventCount = 0
+    private var totalEventsThisRun = 0L
     private var teachingMode = false
     private var lastHumanTouchAt = 0L
     private var lastObservedSnapshot: PageSnapshot? = null
@@ -1123,7 +1124,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         if (!::counters.isInitialized) return
         val t = tracker ?: return
         val stalled = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt) / 1000
-        counters.text = "Site ${t.siteIndex + 1}/${sites.size} · verified ${t.verifiedDiscoveries} · passes ${t.completedPasses} · logs ${events.size} · no-progress ${stalled}s"
+        counters.text = "Site ${t.siteIndex + 1}/${sites.size} · verified ${t.verifiedDiscoveries} · passes ${t.completedPasses} · logs ${events.size} retained / ${totalEventsThisRun} new · no-progress ${stalled}s"
     }
 
     private fun record(
@@ -1136,6 +1137,8 @@ class OvernightLearningActivity : AppCompatActivity() {
         coverageAfter: Double = lastCoverage
     ) {
         val site = activeSite
+        totalEventsThisRun++
+        unpersistedEventCount++
         events += LearningEvent(
             timestamp = System.currentTimeMillis(),
             source = site?.name ?: "Learning Run",
@@ -1158,7 +1161,7 @@ class OvernightLearningActivity : AppCompatActivity() {
             val file = File(filesDir, LOG_FILE)
             if (file.exists()) {
                 events.addAll(LearningReportWriter.decode(file.readText()).takeLast(LearningRuntimePolicy.maxLogEvents))
-                eventsAtLastPersist = events.size
+                unpersistedEventCount = 0
                 lastLogPersistAt = System.currentTimeMillis()
             }
         }
@@ -1166,12 +1169,12 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun persistLog(force: Boolean = false) {
         val now = System.currentTimeMillis()
-        val eventsSince = (events.size - eventsAtLastPersist).coerceAtLeast(0)
+        val eventsSince = unpersistedEventCount
         val elapsed = (now - lastLogPersistAt).coerceAtLeast(0L)
         if (!force && !LearningRuntimePolicy.shouldPersistLog(eventsSince, elapsed)) return
         runCatching {
             File(filesDir, LOG_FILE).writeText(LearningReportWriter.encode(events, "site_brain_learning_run"))
-            eventsAtLastPersist = events.size
+            unpersistedEventCount = 0
             lastLogPersistAt = now
         }
     }

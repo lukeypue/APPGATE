@@ -44,4 +44,15 @@ class SafeActionClassifierTest {
         assertEquals(ActionKind.APPLY_FILTER, SafeActionClassifier.inferActionKind(select))
         assertEquals(ActionKind.APPLY_FILTER, SafeActionClassifier.inferActionKind(option))
     }
+    @Test
+    fun commonCrossSiteFiltersNeedNoSiteSpecificTraining() {
+        listOf("Max price", "Mileage", "Year", "ZIP", "Radius", "Condition", "Bedrooms", "Brand")
+            .forEach { label ->
+                assertEquals(label, ActionKind.APPLY_FILTER, SafeActionClassifier.inferActionKind(element(label)))
+            }
+        val numeric = element("Maximum", null).copy(tag = "input", role = null, inputType = "number")
+        val range = element("Range", null).copy(tag = "input", role = null, inputType = "range")
+        assertEquals(ActionKind.APPLY_FILTER, SafeActionClassifier.inferActionKind(numeric))
+        assertEquals(ActionKind.APPLY_FILTER, SafeActionClassifier.inferActionKind(range))
+    }
 }

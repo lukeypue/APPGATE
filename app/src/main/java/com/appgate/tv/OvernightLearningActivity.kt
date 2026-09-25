@@ -55,8 +55,11 @@ import com.appgate.tv.sitebrain.GitHubLogRequest
 import com.appgate.tv.sitebrain.GitHubLogRequestClient
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.Executors
 
 class OvernightLearningActivity : AppCompatActivity() {
+    private val logWriter = Executors.newSingleThreadExecutor()
+    @Volatile private var logWriteInFlight = false
     private lateinit var webView: WebView
     private lateinit var status: TextView
     private lateinit var counters: TextView
@@ -1172,10 +1175,30 @@ class OvernightLearningActivity : AppCompatActivity() {
         val eventsSince = unpersistedEventCount
         val elapsed = (now - lastLogPersistAt).coerceAtLeast(0L)
         if (!force && !LearningRuntimePolicy.shouldPersistLog(eventsSince, elapsed)) return
-        runCatching {
-            File(filesDir, LOG_FILE).writeText(LearningReportWriter.encode(events, "site_brain_learning_run"))
-            unpersistedEventCount = 0
-            lastLogPersistAt = now
+        val snapshot = events.toList()
+        if (force) {
+            runCatching {
+                File(filesDir, LOG_FILE).writeText(LearningReportWriter.encode(snapshot, "site_brain_learning_run"))
+                unpersistedEventCount = 0
+                lastLogPersistAt = now
+            }
+            return
+        }
+        if (logWriteInFlight) return
+        logWriteInFlight = true
+        unpersistedEventCount = 0
+        lastLogPersistAt = now
+        logWriter.execute {
+            runCatching {
+                val target = File(filesDir, LOG_FILE)
+                val temp = File(filesDir, "$LOG_FILE.tmp")
+                temp.writeText(LearningReportWriter.encode(snapshot, "site_brain_learning_run"))
+                if (!temp.renameTo(target)) {
+                    target.writeText(temp.readText())
+                    temp.delete()
+                }
+            }
+            logWriteInFlight = false
         }
     }
 

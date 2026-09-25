@@ -50,6 +50,30 @@ class SiteBrainRepository(private val store: SiteBrainStore) {
         return updated
     }
 
+    /**
+     * Adds many discovered controls with one load/encode/save cycle.
+     * The old discovery loop persisted the complete Site Brain once per control
+     * (up to 120 times on a page), which could block Android's UI thread long
+     * enough for the system to report "Browser isn't responding".
+     */
+    fun recordTransitions(host: String, edgesToAdd: List<SiteEdge>): SiteBrainState {
+        if (edgesToAdd.isEmpty()) return load(host)
+        val current = load(host)
+        val byId = LinkedHashMap<String, SiteEdge>(current.edges.size + edgesToAdd.size)
+        current.edges.forEach { byId[it.id] = it }
+        var changed = false
+        edgesToAdd.forEach { edge ->
+            if (!byId.containsKey(edge.id)) {
+                byId[edge.id] = edge
+                changed = true
+            }
+        }
+        if (!changed) return current
+        val updated = recalculate(current.copy(edges = byId.values.toList(), revision = current.revision + 1))
+        save(updated)
+        return updated
+    }
+
     fun markSuccess(host: String, edgeId: String, postcondition: String, toFingerprint: String?): SiteBrainState {
         val current = load(host)
         val now = System.currentTimeMillis()

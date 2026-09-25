@@ -17,8 +17,8 @@ android {
         ndk {
             abiFilters 'arm64-v8a'
         }
-        versionCode 45
-        versionName "6.37.0-stability-recovery"
+        versionCode 46
+        versionName "6.38.0-site-brain-focus"
     }
 
     signingConfigs {

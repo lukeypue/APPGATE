@@ -63,29 +63,31 @@ class WebViewSiteBrainController(private val repository: SiteBrainRepository) {
                 val safe = snapshot.elements.filter { SafeActionClassifier.classify(it) == SafetyClass.SAFE }
                 val consequential = snapshot.elements.count { SafeActionClassifier.classify(it) == SafetyClass.CONSEQUENTIAL }
 
-                safe.take(120).forEach { element ->
+                val knownEdgeIds = brain.edges.asSequence().map { it.id }.toHashSet()
+                val discoveredEdges = safe.take(120).mapNotNull { element ->
                     val kind = SafeActionClassifier.inferActionKind(element)
-                    if (kind == ActionKind.UNKNOWN || kind == ActionKind.LOGIN) return@forEach
+                    if (kind == ActionKind.UNKNOWN || kind == ActionKind.LOGIN) return@mapNotNull null
                     val edgeId = edgeId(snapshot.fingerprint, kind, element.label, element.href)
-                    if (brain.edges.none { it.id == edgeId }) {
-                        val edge = SiteEdge(
-                            id = edgeId,
-                            fromFingerprint = snapshot.fingerprint,
-                            toFingerprint = null,
-                            actionKind = kind,
-                            semanticIntent = semanticIntent(kind, element.label),
-                            label = element.label,
-                            safetyClass = SafetyClass.SAFE,
-                            locatorHints = element.locatorHints,
-                            expectedPageType = expectedPageType(kind),
-                            observedPostcondition = null,
-                            confidence = 0.20,
-                            successCount = 0,
-                            failureCount = 0,
-                            lastVerifiedAt = null
-                        )
-                        brain = repository.recordTransition(snapshot.host, snapshot.fingerprint, edge, null)
-                    }
+                    if (!knownEdgeIds.add(edgeId)) return@mapNotNull null
+                    SiteEdge(
+                        id = edgeId,
+                        fromFingerprint = snapshot.fingerprint,
+                        toFingerprint = null,
+                        actionKind = kind,
+                        semanticIntent = semanticIntent(kind, element.label),
+                        label = element.label,
+                        safetyClass = SafetyClass.SAFE,
+                        locatorHints = element.locatorHints,
+                        expectedPageType = expectedPageType(kind),
+                        observedPostcondition = null,
+                        confidence = 0.20,
+                        successCount = 0,
+                        failureCount = 0,
+                        lastVerifiedAt = null
+                    )
+                }
+                if (discoveredEdges.isNotEmpty()) {
+                    brain = repository.recordTransitions(snapshot.host, discoveredEdges)
                 }
 
                 state = if (requiresHuman(snapshot)) {

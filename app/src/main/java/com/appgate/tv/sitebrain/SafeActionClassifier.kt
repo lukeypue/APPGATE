@@ -36,6 +36,7 @@ object SafeActionClassifier {
             text.contains("post") || text.contains("publish") || text.contains("upload") -> ActionKind.POST
             text.contains("follow") || text.contains("subscribe") -> ActionKind.FOLLOW
             element.role.equals("tab", true) -> ActionKind.OPEN_TAB
+            looksLikeExpandable(text, element) -> ActionKind.EXPAND
             element.href != null && looksLikeDetail(text, element.href) -> ActionKind.OPEN_DETAIL
             element.href != null && looksLikeCategory(text, element.href) -> ActionKind.OPEN_CATEGORY
             element.href != null -> ActionKind.NAVIGATE
@@ -74,6 +75,14 @@ object SafeActionClassifier {
         if (listOf("next", "next page", "more results", "load more", "show more", "view more").any { text.contains(it) }) return true
         if (Regex("""(^|\\D)page\\s*[2-9](\\D|$)""").containsMatchIn(text)) return true
         return listOf("page=", "p=", "offset=", "start=").any { href.contains(it) }
+    }
+
+    private fun looksLikeExpandable(text: String, element: SemanticElement): Boolean {
+        if (element.role.equals("button", true) &&
+            listOf("more", "details", "description", "specifications", "specs", "features", "see all", "read more", "expand")
+                .any { text.contains(it) }) return true
+        return listOf("show details", "view details", "more details", "vehicle details", "product details")
+            .any { text.contains(it) }
     }
 
     private fun looksLikeCategory(text: String, href: String): Boolean {

@@ -26,8 +26,8 @@ object SafeActionClassifier {
             element.role.equals("combobox", true) || element.role.equals("option", true) || element.role.equals("listbox", true) -> ActionKind.APPLY_FILTER
             text.contains("search") || element.inputType?.equals("search", true) == true -> ActionKind.SEARCH
             looksLikeFilter(text, element) -> ActionKind.APPLY_FILTER
-            text.contains("sort") -> ActionKind.SORT
-            text == "next" || text.contains("next page") || text.contains("more results") || text.contains("load more") -> ActionKind.PAGINATE
+            looksLikeSort(text) -> ActionKind.SORT
+            looksLikePagination(text, element) -> ActionKind.PAGINATE
             text.contains("back") -> ActionKind.BACK
             text.contains("login") || text.contains("log in") || text.contains("sign in") -> ActionKind.LOGIN
             text.contains("message") || text.contains("contact") -> ActionKind.MESSAGE
@@ -63,6 +63,17 @@ object SafeActionClassifier {
         if (filterSignals.any { text.contains(it) }) return true
         val type = element.inputType?.lowercase().orEmpty()
         return type in setOf("number", "range") && !text.contains("quantity")
+    }
+
+    private fun looksLikeSort(text: String): Boolean =
+        listOf("sort", "newest", "oldest", "price low", "price high", "relevance", "best match", "recently listed")
+            .any { text.contains(it) }
+
+    private fun looksLikePagination(text: String, element: SemanticElement): Boolean {
+        val href = element.href.orEmpty().lowercase()
+        if (listOf("next", "next page", "more results", "load more", "show more", "view more").any { text.contains(it) }) return true
+        if (Regex("""(^|\\D)page\\s*[2-9](\\D|$)""").containsMatchIn(text)) return true
+        return listOf("page=", "p=", "offset=", "start=").any { href.contains(it) }
     }
 
     private fun looksLikeCategory(text: String, href: String): Boolean {

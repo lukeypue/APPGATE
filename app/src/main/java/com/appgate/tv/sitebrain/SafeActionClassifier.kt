@@ -25,7 +25,7 @@ object SafeActionClassifier {
             element.tag.equals("select", true) -> ActionKind.APPLY_FILTER
             element.role.equals("combobox", true) || element.role.equals("option", true) || element.role.equals("listbox", true) -> ActionKind.APPLY_FILTER
             text.contains("search") || element.inputType?.equals("search", true) == true -> ActionKind.SEARCH
-            text.contains("filter") || text.contains("price") || text.contains("mileage") || text.contains("distance") -> ActionKind.APPLY_FILTER
+            looksLikeFilter(text, element) -> ActionKind.APPLY_FILTER
             text.contains("sort") -> ActionKind.SORT
             text == "next" || text.contains("next page") || text.contains("more results") || text.contains("load more") -> ActionKind.PAGINATE
             text.contains("back") -> ActionKind.BACK
@@ -50,6 +50,20 @@ object SafeActionClassifier {
         element.nearbyText.orEmpty(),
         element.href.orEmpty()
     ).joinToString(" ").lowercase().replace(Regex("\\s+"), " ").trim()
+
+    private fun looksLikeFilter(text: String, element: SemanticElement): Boolean {
+        val filterSignals = listOf(
+            "filter", "price", "min price", "max price", "minimum", "maximum",
+            "mileage", "miles", "odometer", "distance", "radius", "within",
+            "year", "make", "model", "trim", "body style", "condition",
+            "bed", "bath", "bedroom", "bathroom", "square feet", "sq ft",
+            "category", "brand", "size", "color", "location", "zip", "postal",
+            "from", "to", "under", "over", "range", "apply filters", "show results"
+        )
+        if (filterSignals.any { text.contains(it) }) return true
+        val type = element.inputType?.lowercase().orEmpty()
+        return type in setOf("number", "range") && !text.contains("quantity")
+    }
 
     private fun looksLikeCategory(text: String, href: String): Boolean {
         val h = href.lowercase()

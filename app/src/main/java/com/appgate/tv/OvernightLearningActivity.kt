@@ -16,6 +16,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.JavascriptInterface
 import android.view.View
 import android.view.MotionEvent
@@ -369,6 +370,29 @@ class OvernightLearningActivity : AppCompatActivity() {
                             }
                         }
                     }
+                }
+
+                override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+                    val didCrash = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) detail?.didCrash() == true else true
+                    runCatching {
+                        getSharedPreferences("site_brain_crash_recovery", MODE_PRIVATE).edit()
+                            .putLong("renderer_gone_at", System.currentTimeMillis())
+                            .putString("site", activeSite?.name.orEmpty())
+                            .putString("host", activeSite?.expectedHost.orEmpty())
+                            .putBoolean("did_crash", didCrash)
+                            .apply()
+                    }
+                    stopped = true
+                    handler.removeCallbacksAndMessages(null)
+                    runCatching { view?.stopLoading() }
+                    runCatching { view?.removeAllViews() }
+                    runCatching { view?.destroy() }
+                    status.text = "Browser renderer stopped\nSite Brain checkpoint was saved. Restarting learning safely…"
+                    saveCheckpoint()
+                    handler.postDelayed({
+                        if (!isFinishing && !isDestroyed) recreate()
+                    }, 700L)
+                    return true
                 }
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {

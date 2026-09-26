@@ -3,11 +3,18 @@ package com.appgate.tv
 object LearningNavigationPolicy {
     private val trustedAuthHosts = setOf(
         "accounts.google.com",
+        "accounts.googleusercontent.com",
+        "oauth2.googleapis.com",
+        "www.googleapis.com",
+        "google.com",
         "oauth.facebook.com",
         "www.facebook.com",
         "facebook.com",
         "m.facebook.com",
-        "appleid.apple.com"
+        "appleid.apple.com",
+        "auth.offerup.com",
+        "login.offerup.com",
+        "offerup.com"
     )
 
     fun shouldAllow(targetHost: String, destinationHost: String, humanAuthWindow: Boolean): Boolean {

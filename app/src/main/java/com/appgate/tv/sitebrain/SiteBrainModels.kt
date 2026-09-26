@@ -48,6 +48,36 @@ enum class SafetyClass {
     BLOCKED
 }
 
+// Semantic effect classes are assigned by perception/classification, never by an LLM.
+// COMMIT_EXTERNAL is a hard executor boundary: training can learn that a control exists,
+// but it may not dispatch the external side effect.
+enum class EffectClass {
+    READ,
+    NAVIGATE,
+    MUTATE_LOCAL,
+    COMMIT_EXTERNAL,
+    BLOCKED
+}
+
+enum class PostconditionKind {
+    RESULTS_CHANGED,
+    CONSTRAINT_APPLIED,
+    PAGE_TYPE_IS,
+    DETAIL_MATCHES,
+    URL_QUERY_HAS,
+    DIALOG_OPENED,
+    TEXT_EXPANDED,
+    END_OF_RESULTS
+}
+
+data class ActionExpectation(
+    val kind: PostconditionKind,
+    val key: String? = null,
+    val value: String? = null,
+    val pageType: PageType? = null
+)
+
+
 data class SemanticElement(
     val id: String,
     val tag: String,
@@ -61,6 +91,16 @@ data class SemanticElement(
     val locatorHints: List<String> = emptyList(),
     val currentValue: String? = null,
     val choices: List<String> = emptyList()
+)
+
+data class SemanticPageState(
+    val host: String,
+    val routeSignature: String,
+    val pageType: PageType,
+    val affordanceRoles: Set<ActionKind>,
+    val activeConstraints: Map<String, String>,
+    val resultItemKeys: Set<String>,
+    val semanticHash: String
 )
 
 data class PageSnapshot(

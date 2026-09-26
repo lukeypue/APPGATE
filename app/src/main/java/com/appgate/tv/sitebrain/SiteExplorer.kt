@@ -48,7 +48,7 @@ object SiteExplorer {
                 val kind = SafeActionClassifier.inferActionKind(element)
                 val key = normalize(element.label) to kind
                 val learned = learnedOutcomes[key] ?: transferableOutcomes[key]
-                Triple(element, kind, score(element, kind, learned))
+                Triple(element, kind, score(element, kind, learned, snapshot.pageType))
             }
             .filter { it.second != ActionKind.UNKNOWN && it.third > 0 }
             .sortedByDescending { it.third }
@@ -59,7 +59,7 @@ object SiteExplorer {
         return ExplorerDecision.Act(best.first, best.second, intent)
     }
 
-    private fun score(element: SemanticElement, kind: ActionKind, learned: SiteEdge?): Int {
+    private fun score(element: SemanticElement, kind: ActionKind, learned: SiteEdge?, pageType: PageType): Int {
         // New controls deserve exploration, but a route that has already been verified should
         // become a reusable skill rather than being treated as "already tried" and avoided.
         var score = when {
@@ -79,6 +79,15 @@ object SiteExplorer {
             ActionKind.EXPAND -> 25
             ActionKind.BACK -> 10
             else -> 0
+        }
+        // Prefer actions that advance the generic search workflow instead of repeatedly
+        // clicking high-priority controls that do not make sense for the current page type.
+        score += when (pageType) {
+            PageType.HOME, PageType.UNKNOWN -> if (kind in setOf(ActionKind.SEARCH, ActionKind.OPEN_CATEGORY)) 30 else 0
+            PageType.CATEGORY -> if (kind in setOf(ActionKind.SEARCH, ActionKind.APPLY_FILTER, ActionKind.OPEN_DETAIL)) 30 else 0
+            PageType.RESULT_LIST -> if (kind in setOf(ActionKind.APPLY_FILTER, ActionKind.SORT, ActionKind.OPEN_DETAIL, ActionKind.PAGINATE)) 35 else if (kind == ActionKind.SEARCH) -15 else 0
+            PageType.DETAIL -> if (kind in setOf(ActionKind.EXPAND, ActionKind.BACK)) 35 else if (kind == ActionKind.SEARCH) -25 else 0
+            PageType.LOGIN, PageType.CHALLENGE -> -200
         }
         val text = normalize(element.label + " " + element.nearbyText.orEmpty())
         if (listOf("privacy", "terms", "help", "about", "careers", "advertise", "cookie").any(text::contains)) score -= 140

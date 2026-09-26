@@ -88,6 +88,9 @@ object SiteExplorer {
             PageType.RESULT_LIST -> if (kind in setOf(ActionKind.APPLY_FILTER, ActionKind.SORT, ActionKind.OPEN_DETAIL, ActionKind.PAGINATE)) 35 else if (kind == ActionKind.SEARCH) -15 else 0
             PageType.DETAIL -> if (kind in setOf(ActionKind.EXPAND, ActionKind.BACK)) 35 else if (kind == ActionKind.SEARCH) -25 else 0
             PageType.LOGIN, PageType.CHALLENGE -> -200
+            PageType.SEARCH -> if (kind in setOf(ActionKind.SEARCH, ActionKind.APPLY_FILTER, ActionKind.OPEN_DETAIL)) 30 else 0
+            PageType.FILTER_PANEL -> if (kind == ActionKind.APPLY_FILTER) 40 else 0
+            PageType.PROFILE -> if (kind == ActionKind.BACK) 25 else -10
         }
         val text = normalize(element.label + " " + element.nearbyText.orEmpty())
         if (listOf("privacy", "terms", "help", "about", "careers", "advertise", "cookie").any(text::contains)) score -= 140

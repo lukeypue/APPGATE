@@ -7,6 +7,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
 
 class ListingActivity : AppCompatActivity() {
@@ -22,7 +23,11 @@ class ListingActivity : AppCompatActivity() {
         geckoView = GeckoView(this).apply {
             setBackgroundColor(Color.WHITE)
         }
-        session = GeckoSession().apply {
+        val sessionSettings = GeckoSessionSettings.Builder()
+            .usePrivateMode(false)
+            .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+            .build()
+        session = GeckoSession(sessionSettings).apply {
             contentDelegate = object : GeckoSession.ContentDelegate {}
             navigationDelegate = object : GeckoSession.NavigationDelegate {
                 override fun onCanGoBack(session: GeckoSession, value: Boolean) {

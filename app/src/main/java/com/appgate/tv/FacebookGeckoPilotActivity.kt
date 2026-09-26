@@ -25,6 +25,7 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
     private var lastSnapshot: JSONObject? = null
     private var firstSnapshotScheduled = false
     private var autoSteps = 0
+    private var trainingQueryIndex = 0
     private val attemptedActions = linkedSetOf<String>()
     private val maxAutoSteps = 12
 
@@ -124,7 +125,8 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                         )
                     }
                 }
-                val query = miniBrain.trainingQueries().first()
+                val trainingQueries = miniBrain.trainingQueries()
+                val query = trainingQueries[trainingQueryIndex % trainingQueries.size]
                 val decision = miniBrain.chooseNext(message.optString("url"), list, query)
                 status.text = buildString {
                     append("Facebook Gecko Mini Brain\n")
@@ -143,7 +145,8 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                 if (decision != null && autoSteps < maxAutoSteps) {
                     val chosen = list.firstOrNull { it.id == decision.controlId }
                     val signature = decision.intent.name + ":" +
-                        chosen?.label.orEmpty().lowercase().take(80)
+                        chosen?.label.orEmpty().lowercase().take(80) +
+                        if (decision.intent.name == "SEARCH") ":$query" else ""
                     if (attemptedActions.add(signature)) {
                         autoSteps += 1
                         handler.postDelayed({
@@ -151,7 +154,17 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                                 status.text = "Facebook Mini Brain learning " +
                                     decision.intent.name.lowercase() +
                                     " controls… step $autoSteps/$maxAutoSteps"
-                                decision.controlId?.let { bridge.click(it) }
+                                decision.controlId?.let { controlId ->
+                                    if (decision.intent.name == "SEARCH") {
+                                        // Search is a reusable parameterized skill, not just a button click.
+                                        // Fill + submit the visible Marketplace search control with varied
+                                        // training queries so the brain learns result-page transitions.
+                                        bridge.action("FILL", controlId, query)
+                                        trainingQueryIndex = (trainingQueryIndex + 1) % trainingQueries.size
+                                    } else {
+                                        bridge.click(controlId)
+                                    }
+                                }
                                 handler.postDelayed({
                                     if (!isFinishing && !isDestroyed) bridge.requestSnapshot()
                                 }, 1_800L)

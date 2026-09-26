@@ -8,12 +8,14 @@ import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoView
 
 class ListingActivity : AppCompatActivity() {
     private lateinit var geckoView: GeckoView
     private lateinit var session: GeckoSession
     private var canGoBack = false
+    private val childSessions = mutableListOf<GeckoSession>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,6 +34,12 @@ class ListingActivity : AppCompatActivity() {
             navigationDelegate = object : GeckoSession.NavigationDelegate {
                 override fun onCanGoBack(session: GeckoSession, value: Boolean) {
                     canGoBack = value
+                }
+
+                override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession> {
+                    val child = GeckoSession(sessionSettings)
+                    childSessions += child
+                    return GeckoResult.fromValue(child)
                 }
             }
             open(GeckoRuntimeProvider.get(this@ListingActivity))
@@ -66,6 +74,8 @@ class ListingActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (::geckoView.isInitialized) runCatching { geckoView.releaseSession() }
+        childSessions.forEach { child -> runCatching { child.close() } }
+        childSessions.clear()
         if (::session.isInitialized) runCatching { session.close() }
         super.onDestroy()
     }

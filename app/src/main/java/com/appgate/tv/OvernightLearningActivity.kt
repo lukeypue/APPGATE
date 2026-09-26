@@ -70,7 +70,6 @@ class OvernightLearningActivity : AppCompatActivity() {
     private lateinit var teachButton: Button
     private lateinit var aiTeacherButton: Button
     private lateinit var requestedLogsButton: Button
-    private lateinit var loginButton: Button
     private lateinit var controller: WebViewSiteBrainController
     private lateinit var brainRepository: SiteBrainRepository
     private lateinit var gapLogger: CapabilityGapLogger
@@ -312,11 +311,6 @@ class OvernightLearningActivity : AppCompatActivity() {
             }
         })
         row3.addView(requestedLogsButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        loginButton = compact(Button(this).apply {
-            text = "LOGIN"
-            setOnClickListener { openDedicatedSiteLogin() }
-        })
-        row3.addView(loginButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row3)
 
         webView = WebView(this).apply {

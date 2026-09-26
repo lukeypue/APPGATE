@@ -2,9 +2,9 @@ package com.appgate.tv
 
 object LearningPlateauPolicy {
     private const val MIN_USEFUL_ACTIONS = 5
-    private const val REQUIRED_PLATEAUS = 3
-    private const val HARD_PLATEAU_CAP = 5
-    private const val STUCK_TIMEOUT_MS = 2 * 60_000L
+    private const val REQUIRED_PLATEAUS = 8
+    private const val HARD_PLATEAU_CAP = 12
+    private const val STUCK_TIMEOUT_MS = 3 * 60_000L
 
     fun shouldMoveOn(
         consecutivePlateaus: Int,

@@ -17,8 +17,8 @@ android {
         ndk {
             abiFilters 'arm64-v8a'
         }
-        versionCode 60
-        versionName "6.52.0-google-two-step-gecko"
+        versionCode 61
+        versionName "6.53.0-connected-sites"
     }
 
     signingConfigs {

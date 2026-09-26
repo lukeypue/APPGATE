@@ -66,6 +66,13 @@ class GeckoSiteBrainBridge(
             .put("elementId", elementId)
             .put("value", value))
 
+    fun action(action: String, elementId: String, value: String? = null): Boolean =
+        post(JSONObject()
+            .put("type", "ACTION")
+            .put("action", action)
+            .put("elementId", elementId)
+            .apply { if (value != null) put("value", value) })
+
     private fun post(message: JSONObject): Boolean {
         val activePort = port ?: return false
         activePort.postMessage(message)

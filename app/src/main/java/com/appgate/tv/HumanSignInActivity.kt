@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.GeckoView
 
 class HumanSignInActivity : AppCompatActivity() {
@@ -59,7 +60,12 @@ class HumanSignInActivity : AppCompatActivity() {
         geckoView = GeckoView(this).apply {
             setBackgroundColor(Color.WHITE)
         }
-        session = GeckoSession().apply {
+        session = GeckoSession(
+            GeckoSessionSettings.Builder()
+                .usePrivateMode(false)
+                .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+                .build()
+        ).apply {
             contentDelegate = object : GeckoSession.ContentDelegate {}
             navigationDelegate = object : GeckoSession.NavigationDelegate {
                 override fun onCanGoBack(session: GeckoSession, value: Boolean) {
@@ -104,7 +110,7 @@ class HumanSignInActivity : AppCompatActivity() {
                         return GeckoResult.deny()
                     }
                     val host = parsed?.host.orEmpty()
-                    val allowed = LearningNavigationPolicy.shouldAllow(targetHost, host, true)
+                    val allowed = LearningNavigationPolicy.shouldAllow(targetHost, host, true) || isGoogleAuthSupportHost(host)
                     if (!allowed) {
                         status.text = "Blocked an unrelated website during sign-in: $host\nUse the website's normal login or tap DONE to return."
                     }
@@ -121,6 +127,13 @@ class HumanSignInActivity : AppCompatActivity() {
         // and Gecko-powered Site Brain sessions. Do not automatically finish on target return;
         // keeping this session alive avoids throwing away the very login state we just created.
         if (authUrl.startsWith("https://")) session.loadUri(authUrl) else finish()
+    }
+
+    private fun isGoogleAuthSupportHost(host: String): Boolean {
+        val normalized = host.lowercase()
+        return normalized == "gstatic.com" || normalized.endsWith(".gstatic.com") ||
+            normalized == "googleusercontent.com" || normalized.endsWith(".googleusercontent.com") ||
+            normalized == "googleapis.com" || normalized.endsWith(".googleapis.com")
     }
 
     @Suppress("DEPRECATION")

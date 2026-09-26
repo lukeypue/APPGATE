@@ -21,6 +21,7 @@ class HumanSignInActivity : AppCompatActivity() {
     private var targetName: String = "Site"
     private var canGoBack = false
     private var lastUrl: String = ""
+    private var returnedToTarget = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,7 +69,8 @@ class HumanSignInActivity : AppCompatActivity() {
                     lastUrl = url.orEmpty()
                     val host = runCatching { Uri.parse(lastUrl).host.orEmpty() }.getOrDefault("")
                     if (LearningNavigationPolicy.shouldAllow(targetHost, host, false)) {
-                        status.text = "Sign-in returned to $targetName. If the site looks signed in, tap DONE — RETURN TO LEARNING."
+                        returnedToTarget = true
+                        status.text = "Sign-in returned to $targetName. Finishing secure sign-in…"
                     }
                 }
 
@@ -119,6 +121,8 @@ class HumanSignInActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (::geckoView.isInitialized) runCatching { geckoView.releaseSession() }
+        // Keep authenticated Gecko state in the shared runtime. The session itself is closed
+        // because the learning screen currently uses a different renderer.
         if (::session.isInitialized) runCatching { session.close() }
         super.onDestroy()
     }

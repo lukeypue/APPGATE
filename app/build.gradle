@@ -17,8 +17,8 @@ android {
         ndk {
             abiFilters 'arm64-v8a'
         }
-        versionCode 50
-        versionName "6.42.0-auth-background-foundation"
+        versionCode 51
+        versionName "6.43.0-smarter-site-brain"
     }
 
     signingConfigs {

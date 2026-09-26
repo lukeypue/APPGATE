@@ -295,13 +295,17 @@ class OvernightLearningActivity : AppCompatActivity() {
             settings.databaseEnabled = true
             // Avoid pre-rendering off-screen pages during long runs; it can retain large render surfaces.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) settings.offscreenPreRaster = false
-            // Overnight learning does not need product photos, hero art, or ad images.
-            // Skipping them saves bandwidth/CPU while preserving DOM text, links, filters,
-            // forms, scripts, and the controls Site Brain actually learns.
-            settings.loadsImagesAutomatically = false
-            settings.blockNetworkImage = true
+            // Learning must see the same functional page the user sees. Modern marketplace
+            // sites use images, lazy-loaded regions and image-backed controls as part of layout
+            // and authentication flows, so blocking images can leave an incomplete page.
+            settings.loadsImagesAutomatically = true
+            settings.blockNetworkImage = false
+            // Allow normal JavaScript login windows. Keep multiple-window support disabled so
+            // target=_blank navigation stays in this learning WebView and retains its cookies.
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.setSupportMultipleWindows(false)
             settings.mediaPlaybackRequiresUserGesture = true
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             settings.allowFileAccess = false
             settings.allowContentAccess = false
             CookieManager.getInstance().setAcceptCookie(true)

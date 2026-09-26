@@ -112,6 +112,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private var pageSettling = false
     private var lastHeartbeatSignature = ""
     private var teachTextDialogOpen = false
+    private var pendingAutomaticSiteMove = false
 
     private val githubLogRequestPoller = object : Runnable {
         override fun run() {
@@ -570,6 +571,7 @@ class OvernightLearningActivity : AppCompatActivity() {
         pageSettling = false
         waitingForHuman = false
         authScreenOpen = false
+        pendingAutomaticSiteMove = false
         controller.markHumanResume()
         awaitingInitialPage = true
         webView.visibility = View.INVISIBLE
@@ -1074,6 +1076,33 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun moveToNextSite(reason: String, force: Boolean = false) {
         if (stopped || (!force && userPaused)) return
+        if (!force) {
+            val elapsed = (System.currentTimeMillis() - siteStartedAt).coerceAtLeast(0L)
+            val remaining = LearningRuntimePolicy.minAutomaticSiteDwellMs - elapsed
+            if (remaining > 0L) {
+                // This is the final gate for every automatic rotation path. It protects against
+                // stale recovery callbacks or unexpectedly fast "done" decisions elsewhere.
+                if (!pendingAutomaticSiteMove) {
+                    pendingAutomaticSiteMove = true
+                    val sessionAtRequest = activeSessionId
+                    record(
+                        "SITE_MOVE_DEFERRED",
+                        "DWELLING",
+                        activeSite?.expectedHost.orEmpty(),
+                        lastObservedSnapshot?.routeSignature.orEmpty(),
+                        "Automatic move requested too early (${elapsed / 1000}s); holding site for another ${remaining / 1000}s"
+                    )
+                    handler.postDelayed({
+                        pendingAutomaticSiteMove = false
+                        if (!stopped && !userPaused && activeSessionId == sessionAtRequest) {
+                            moveToNextSite(reason)
+                        }
+                    }, remaining)
+                }
+                return
+            }
+        }
+        pendingAutomaticSiteMove = false
         val site = activeSite
         actionInFlight = false
         waitingForHuman = false

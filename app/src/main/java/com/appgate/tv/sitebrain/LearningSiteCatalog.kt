@@ -23,7 +23,8 @@ object LearningSiteCatalog {
      * are intentionally NOT trained here; a general web/search layer can cover
      * those later without spending Site Brain time relearning them.
      *
-     * Facebook Marketplace is trained separately in FacebookGeckoPilotActivity.
+     * Facebook Marketplace is also available to the Gecko Mini Brain, but it belongs in the
+     * normal four-site learning rotation so it is never silently omitted from overnight runs.
      */
     fun defaultSites(): List<LearningSite> = listOf(
         LearningSite(
@@ -37,6 +38,12 @@ object LearningSiteCatalog {
             "KSL Cars",
             "https://cars.ksl.com/",
             "cars.ksl.com"
+        ),
+        LearningSite(
+            "facebook_marketplace",
+            "Facebook Marketplace",
+            "https://www.facebook.com/marketplace/",
+            "facebook.com"
         ),
         LearningSite(
             "offerup",

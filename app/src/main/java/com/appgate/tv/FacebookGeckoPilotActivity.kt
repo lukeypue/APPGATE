@@ -26,6 +26,7 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
     private var firstSnapshotScheduled = false
     private var autoSteps = 0
     private var trainingQueryIndex = 0
+    private var searchQueriesTried = 0
     private val attemptedActions = linkedSetOf<String>()
     private val maxAutoSteps = 12
 
@@ -127,7 +128,22 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                 }
                 val trainingQueries = miniBrain.trainingQueries()
                 val query = trainingQueries[trainingQueryIndex % trainingQueries.size]
-                val decision = miniBrain.chooseNext(message.optString("url"), list, query)
+                // Do not let a permanently-visible high-priority control starve the rest of
+                // the learning loop. Once search has been trained with every seed query,
+                // temporarily remove search controls; for other intents, remove controls
+                // whose semantic signature has already been exercised. This lets one run
+                // progress search -> filters -> categories -> results -> pagination.
+                val eligibleControls = list.filter { control ->
+                    val intent = miniBrain.classify(control)
+                    if (intent.name == "SEARCH") {
+                        searchQueriesTried < trainingQueries.size
+                    } else {
+                        val learnedSignature = intent.name + ":" +
+                            control.label.lowercase().take(80)
+                        !attemptedActions.contains(learnedSignature)
+                    }
+                }
+                val decision = miniBrain.chooseNext(message.optString("url"), eligibleControls, query)
                 status.text = buildString {
                     append("Facebook Gecko Mini Brain\n")
                     append("Page: ").append(message.optString("title").take(80)).append("\n")
@@ -161,6 +177,7 @@ class FacebookGeckoPilotActivity : AppCompatActivity() {
                                         // training queries so the brain learns result-page transitions.
                                         bridge.action("FILL", controlId, query)
                                         trainingQueryIndex = (trainingQueryIndex + 1) % trainingQueries.size
+                                        searchQueriesTried += 1
                                     } else {
                                         bridge.click(controlId)
                                     }

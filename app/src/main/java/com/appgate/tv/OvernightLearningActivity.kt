@@ -154,8 +154,34 @@ class OvernightLearningActivity : AppCompatActivity() {
     }
     private val watchdog = object : Runnable {
         override fun run() {
+            val stalled = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt)
+            // Hard recovery is intentionally checked before the normal state gates. A dead
+            // evaluateJavascript callback can leave pageSettling/actionInFlight true forever.
+            // In that case the UI thread is still alive, so checkpoint and recreate the renderer
+            // instead of allowing a multi-hour frozen learning session.
+            if (!stopped && !userPaused && !teachingMode &&
+                LearningRuntimePolicy.shouldHardRecover(stalled, waitingForHuman, authScreenOpen)) {
+                val site = activeSite
+                record(
+                    "HARD_FREEZE_RECOVERY",
+                    "RESTARTING_RENDERER",
+                    site?.expectedHost.orEmpty(),
+                    lastObservedSnapshot?.routeSignature.orEmpty(),
+                    "No useful progress for ${stalled / 1000}s; checkpoint saved before renderer recreation"
+                )
+                saveCheckpoint()
+                stopped = true
+                handler.removeCallbacksAndMessages(null)
+                runCatching { webView.stopLoading() }
+                runCatching { webView.removeAllViews() }
+                runCatching { webView.destroy() }
+                status.text = "Learning ${site?.name ?: "site"}\nFrozen browser detected. Restarting safely…"
+                handler.postDelayed({
+                    if (!isFinishing && !isDestroyed) recreate()
+                }, 700L)
+                return
+            }
             if (!stopped && !userPaused && !authScreenOpen && !teachingMode && !mainFrameLoading && !pageSettling && !actionInFlight && !teacherCallInFlight) {
-                val stalled = LearningRuntimePolicy.stalledForMs(System.currentTimeMillis(), lastProgressAt)
                 if (LearningRuntimePolicy.shouldAutoSkip(stalled, waitingForHuman)) {
                     val site = activeSite
                     gapLogger.record("STALLED", site?.name.orEmpty(), site?.expectedHost.orEmpty(), "", "No useful progress for ${stalled / 1000}s before auto-skip")

@@ -3,6 +3,7 @@ package com.appgate.tv
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.content.Intent
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -19,6 +20,7 @@ class HumanSignInActivity : AppCompatActivity() {
     private var targetHost: String = ""
     private var targetName: String = "Site"
     private var canGoBack = false
+    private var lastUrl: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,7 +37,7 @@ class HumanSignInActivity : AppCompatActivity() {
         status = TextView(this).apply {
             setTextColor(Color.WHITE)
             textSize = 15f
-            text = "Human sign-in for $targetName\nComplete the website login or verification here. Site Brain will reuse this Gecko browser session."
+            text = "Human sign-in for $targetName\nComplete the website login or verification here. This secure sign-in window will return you to Site Brain when the site finishes."
             setPadding(4, 4, 4, 8)
         }
         root.addView(status)
@@ -63,7 +65,8 @@ class HumanSignInActivity : AppCompatActivity() {
                     perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
                     hasUserGesture: Boolean
                 ) {
-                    val host = runCatching { Uri.parse(url.orEmpty()).host.orEmpty() }.getOrDefault("")
+                    lastUrl = url.orEmpty()
+                    val host = runCatching { Uri.parse(lastUrl).host.orEmpty() }.getOrDefault("")
                     if (LearningNavigationPolicy.shouldAllow(targetHost, host, false)) {
                         status.text = "Sign-in returned to $targetName. If the site looks signed in, tap DONE — RETURN TO LEARNING."
                     }
@@ -74,8 +77,25 @@ class HumanSignInActivity : AppCompatActivity() {
                     request: GeckoSession.NavigationDelegate.LoadRequest
                 ): GeckoResult<AllowOrDeny>? {
                     val rawUrl = request.uri
-                    if (!rawUrl.startsWith("https://")) return GeckoResult.deny()
-                    val host = runCatching { Uri.parse(rawUrl).host.orEmpty() }.getOrDefault("")
+                    lastUrl = rawUrl
+                    val parsed = runCatching { Uri.parse(rawUrl) }.getOrNull()
+                    val scheme = parsed?.scheme.orEmpty().lowercase()
+                    if (scheme != "https" && scheme != "http") {
+                        // OAuth providers can finish with an app/deep-link callback. A hard deny
+                        // leaves Gecko on a blank document. Hand the callback back to Android
+                        // instead, while still refusing arbitrary navigation inside the auth view.
+                        val handled = runCatching {
+                            startActivity(Intent(Intent.ACTION_VIEW, parsed))
+                            true
+                        }.getOrDefault(false)
+                        status.text = if (handled) {
+                            "Finishing $targetName sign-in…"
+                        } else {
+                            "Sign-in reached a callback this browser cannot open ($scheme). Tap DONE to return, or try email sign-in."
+                        }
+                        return GeckoResult.deny()
+                    }
+                    val host = parsed?.host.orEmpty()
                     val allowed = LearningNavigationPolicy.shouldAllow(targetHost, host, true)
                     if (!allowed) {
                         status.text = "Blocked an unrelated website during sign-in: $host\nUse the website's normal login or tap DONE to return."

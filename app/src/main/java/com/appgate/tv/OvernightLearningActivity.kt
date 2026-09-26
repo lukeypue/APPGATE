@@ -1036,8 +1036,8 @@ class OvernightLearningActivity : AppCompatActivity() {
         pauseButton.isEnabled = false
         resumeButton.isEnabled = true
         skipButton.isEnabled = true
-        record("HUMAN_BOUNDARY", "WAITING_30_SECONDS", host, route, reason)
-        status.text = "${activeSite?.name ?: "Site"} needs you\nComplete login/CAPTCHA and tap Resume. If nothing happens, the watchdog will checkpoint and auto-skip after 30 seconds."
+        record("HUMAN_BOUNDARY", "WAITING_FOR_HUMAN", host, route, reason)
+        val watchdogSeconds = LearningRuntimePolicy.noProgressAutoSkipMs / 1000L\n        status.text = "${activeSite?.name ?: "Site"} needs you\\nComplete login/CAPTCHA and tap Resume. If nothing happens, the watchdog will checkpoint and auto-skip after $watchdogSeconds seconds."
         saveCheckpoint()
     }
 
@@ -1081,7 +1081,7 @@ class OvernightLearningActivity : AppCompatActivity() {
             "",
             if (auto) "Watchdog skip; learned knowledge retained" else "Skipped by user; learned knowledge retained"
         )
-        moveToNextSite(if (auto) "30-second watchdog" else "skipped by user", true)
+        moveToNextSite(if (auto) "no-progress watchdog" else "skipped by user", true)
     }
 
     private fun pauseLearning() {

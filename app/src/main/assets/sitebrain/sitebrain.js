@@ -76,7 +76,17 @@
       if (setter) setter.call(el, value); else el.value = value;
       el.dispatchEvent(new Event("input", {bubbles:true}));
       el.dispatchEvent(new Event("change", {bubbles:true}));
-      return {type:"ACTION_RESULT", ok:true, result:"FILLED"};
+      // Modern React/Vue search boxes often require an explicit submit/Enter after the
+      // controlled input value changes. Prefer a nearby search form, then fall back to Enter.
+      const form = el.closest("form");
+      if (form) {
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.dispatchEvent(new Event("submit", {bubbles:true, cancelable:true}));
+        return {type:"ACTION_RESULT", ok:true, result:"FILLED_SUBMITTED"};
+      }
+      el.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", code:"Enter", keyCode:13, which:13, bubbles:true}));
+      el.dispatchEvent(new KeyboardEvent("keyup", {key:"Enter", code:"Enter", keyCode:13, which:13, bubbles:true}));
+      return {type:"ACTION_RESULT", ok:true, result:"FILLED_ENTER"};
     }
     return {type:"ACTION_RESULT", ok:false, reason:"UNSUPPORTED_ACTION"};
   }

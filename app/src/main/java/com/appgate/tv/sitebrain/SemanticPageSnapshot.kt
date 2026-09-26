@@ -175,6 +175,74 @@ object SemanticPageSnapshot {
     }
 }
 
+
+object SemanticStateBuilder {
+    fun from(snapshot: PageSnapshot): SemanticPageState {
+        val roles = snapshot.elements
+            .asSequence()
+            .filter { SafeActionClassifier.classify(it) != SafetyClass.BLOCKED }
+            .map { SafeActionClassifier.inferActionKind(it) }
+            .filter { it != ActionKind.UNKNOWN }
+            .toSet()
+
+        val constraints = linkedMapOf<String, String>()
+        snapshot.elements.filter { it.selected }.forEach { e ->
+            canonicalConstraintKey(e.label + " " + e.nearbyText.orEmpty())?.let { key ->
+                constraints[key] = e.currentValue?.takeIf(String::isNotBlank) ?: e.label.take(80)
+            }
+        }
+
+        val itemKeys = snapshot.elements
+            .asSequence()
+            .filter { SafeActionClassifier.inferActionKind(it) == ActionKind.OPEN_DETAIL }
+            .mapNotNull { e ->
+                val hrefPath = e.href?.let { runCatching { URI(it).path }.getOrNull() }.orEmpty()
+                val seed = listOf(e.label, e.nearbyText.orEmpty(), hrefPath).joinToString("|").lowercase()
+                    .replace(Regex("\\s+"), " ").trim()
+                seed.takeIf(String::isNotBlank)?.let(::shortHash)
+            }
+            .toSet()
+
+        val hashSeed = buildString {
+            append(snapshot.host.lowercase()).append('|')
+            append(snapshot.pageType.name).append('|')
+            append(roles.map { it.name }.sorted().joinToString(",")).append('|')
+            append(constraints.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value.lowercase()}" }).append('|')
+            append(itemKeys.sorted().joinToString(","))
+        }
+        return SemanticPageState(
+            host = snapshot.host,
+            routeSignature = snapshot.routeSignature,
+            pageType = snapshot.pageType,
+            affordanceRoles = roles,
+            activeConstraints = constraints,
+            resultItemKeys = itemKeys,
+            semanticHash = shortHash(hashSeed)
+        )
+    }
+
+    private fun canonicalConstraintKey(raw: String): String? {
+        val t = raw.lowercase()
+        return when {
+            "price" in t -> "price"
+            "mileage" in t || "miles" in t || "odometer" in t -> "mileage"
+            "year" in t -> "year"
+            "make" in t -> "make"
+            "model" in t -> "model"
+            "distance" in t || "radius" in t || "within" in t -> "distance"
+            "location" in t || "zip" in t || "postal" in t -> "location"
+            "condition" in t -> "condition"
+            "category" in t -> "category"
+            else -> null
+        }
+    }
+
+    private fun shortHash(seed: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(seed.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }.take(24)
+    }
+}
+
 object PageFingerprint {
     fun compute(snapshot: PageSnapshot): String {
         val normalizedHeadings = snapshot.headings

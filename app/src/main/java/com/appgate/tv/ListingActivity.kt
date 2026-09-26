@@ -2,6 +2,9 @@ package com.appgate.tv
 
 import android.graphics.Color
 import android.os.Bundle
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
@@ -13,7 +16,7 @@ class ListingActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "Original Listing"
+        title = "Connected Site"
         val url = intent.getStringExtra("url").orEmpty()
 
         geckoView = GeckoView(this).apply {
@@ -29,7 +32,24 @@ class ListingActivity : AppCompatActivity() {
             open(GeckoRuntimeProvider.get(this@ListingActivity))
         }
         geckoView.setSession(session)
-        setContentView(geckoView)
+
+        val doneButton = Button(this).apply {
+            text = "DONE — RETURN TO AI BROWSER"
+            setOnClickListener { finish() }
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(doneButton, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
+            addView(geckoView, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            ))
+        }
+        setContentView(root)
 
         if (url.startsWith("https://")) session.loadUri(url) else finish()
     }

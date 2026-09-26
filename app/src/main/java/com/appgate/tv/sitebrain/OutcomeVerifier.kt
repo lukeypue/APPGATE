@@ -8,7 +8,7 @@ data class VerificationResult(
 
 object OutcomeVerifier {
     fun expectationsFor(action: SiteEdge, before: PageSnapshot): List<ActionExpectation> = when (action.actionKind) {
-        ActionKind.SEARCH -> listOf(ActionExpectation(PostconditionKind.RESULTS_CHANGED))
+        ActionKind.SEARCH -> listOf(\n            ActionExpectation(PostconditionKind.PAGE_TYPE_IS, pageType = action.expectedPageType ?: PageType.RESULT_LIST),\n            ActionExpectation(PostconditionKind.RESULTS_CHANGED)\n        )
         ActionKind.APPLY_FILTER -> listOf(ActionExpectation(PostconditionKind.CONSTRAINT_APPLIED))
         ActionKind.SORT -> listOf(ActionExpectation(PostconditionKind.RESULTS_CHANGED))
         ActionKind.PAGINATE -> listOf(ActionExpectation(PostconditionKind.RESULTS_CHANGED))

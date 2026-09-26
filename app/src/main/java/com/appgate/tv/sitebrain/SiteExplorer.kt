@@ -35,11 +35,24 @@ object SiteExplorer {
         // frequently change fingerprints even though controls such as Search, Price, Next and
         // Details still mean the same thing. Prefer a proven semantic route when the local page
         // has not learned one yet.
+        // Cross-page transfer is deliberately positive-only. A failure is often caused by
+        // a local page binding (modal, stale control, different layout) and must not poison the
+        // same semantic skill everywhere else on a reactive site. Only verifier-confirmed SAFE
+        // successes are allowed to become transferable host skills.
         val transferableOutcomes = state.edges
-            .filter { it.successCount + it.failureCount > 0 }
+            .filter {
+                it.safetyClass == SafetyClass.SAFE &&
+                    it.successCount > 0 &&
+                    it.successCount >= it.failureCount &&
+                    it.confidence >= 0.55
+            }
             .groupBy { normalize(it.label) to it.actionKind }
             .mapValues { (_, edges) ->
-                edges.maxWithOrNull(compareBy<SiteEdge> { it.successCount - it.failureCount }.thenBy { it.lastVerifiedAt ?: 0L })
+                edges.maxWithOrNull(
+                    compareBy<SiteEdge> { it.successCount - it.failureCount }
+                        .thenBy { it.confidence }
+                        .thenBy { it.lastVerifiedAt ?: 0L }
+                )
             }
 
         val candidates = snapshot.elements.asSequence()

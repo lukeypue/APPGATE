@@ -7,12 +7,12 @@ import org.junit.Test
 
 class LearningSiteCatalogTest {
     @Test
-    fun trainingCatalogFocusesOnlyOnHardSites() {
+    fun trainingCatalogContainsAllFourPriorityMarketplaces() {
         val sites = LearningSiteCatalog.defaultSites()
         val keys = sites.map { it.key }.toSet()
-        assertEquals(setOf("ksl_classifieds", "ksl_cars", "offerup"), keys)
+        assertEquals(setOf("ksl_classifieds", "ksl_cars", "facebook_marketplace", "offerup"), keys)
         assertTrue(sites.first { it.key == "ksl_cars" }.startUrl.startsWith("https://cars.ksl.com"))
-        assertFalse(sites.any { it.key == "facebook_marketplace" })
+        assertTrue(sites.first { it.key == "facebook_marketplace" }.startUrl.contains("facebook.com/marketplace"))
         assertFalse(sites.any { it.startUrl.contains("{q}") })
         assertFalse(sites.any { it.startUrl.contains("google.com/search?q=site") })
     }

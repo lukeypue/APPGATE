@@ -70,7 +70,7 @@ class HumanSignInActivity : AppCompatActivity() {
                     val host = runCatching { Uri.parse(lastUrl).host.orEmpty() }.getOrDefault("")
                     if (LearningNavigationPolicy.shouldAllow(targetHost, host, false)) {
                         returnedToTarget = true
-                        status.text = "Sign-in returned to $targetName. Finishing secure sign-in…"
+                        status.text = "Signed in to $targetName. You can keep using this authenticated browser session."
                     }
                 }
 
@@ -111,6 +111,9 @@ class HumanSignInActivity : AppCompatActivity() {
         root.addView(geckoView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
 
+        // Reuse the shared Gecko runtime so authenticated state survives between human sign-in
+        // and Gecko-powered Site Brain sessions. Do not automatically finish on target return;
+        // keeping this session alive avoids throwing away the very login state we just created.
         if (authUrl.startsWith("https://")) session.loadUri(authUrl) else finish()
     }
 

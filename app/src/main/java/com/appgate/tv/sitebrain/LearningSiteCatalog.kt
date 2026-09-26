@@ -4,7 +4,8 @@ data class LearningSite(
     val key: String,
     val name: String,
     val startUrl: String,
-    val expectedHost: String
+    val expectedHost: String,
+    val loginUrl: String? = null
 ) {
     fun acceptsHost(actualHost: String): Boolean {
         val host = actualHost.lowercase().removeSuffix(".").removePrefix("www.")
@@ -31,25 +32,29 @@ object LearningSiteCatalog {
             "ksl_classifieds",
             "KSL Classifieds",
             "https://classifieds.ksl.com/",
-            "ksl.com"
+            "ksl.com",
+            "https://www.ksl.com/login"
         ),
         LearningSite(
             "ksl_cars",
             "KSL Cars",
             "https://cars.ksl.com/",
-            "ksl.com"
+            "ksl.com",
+            "https://www.ksl.com/login"
         ),
         LearningSite(
             "facebook_marketplace",
             "Facebook Marketplace",
             "https://www.facebook.com/marketplace/",
-            "facebook.com"
+            "facebook.com",
+            "https://www.facebook.com/login/"
         ),
         LearningSite(
             "offerup",
             "OfferUp",
             "https://offerup.com/",
-            "offerup.com"
+            "offerup.com",
+            "https://offerup.com/accounts/login/"
         )
     )
 }

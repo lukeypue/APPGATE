@@ -55,6 +55,20 @@ object LearningSiteCatalog {
             "https://offerup.com/",
             "offerup.com",
             "https://offerup.com/accounts/login/"
+        ),
+        LearningSite(
+            "tiktok_shop",
+            "TikTok Shop",
+            "https://www.tiktok.com/shop",
+            "tiktok.com",
+            "https://www.tiktok.com/login"
+        ),
+        LearningSite(
+            "instagram_shop",
+            "Instagram Shop",
+            "https://www.instagram.com/",
+            "instagram.com",
+            "https://www.instagram.com/accounts/login/"
         )
     )
 }

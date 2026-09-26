@@ -70,6 +70,7 @@ class OvernightLearningActivity : AppCompatActivity() {
     private lateinit var teachButton: Button
     private lateinit var aiTeacherButton: Button
     private lateinit var requestedLogsButton: Button
+    private lateinit var loginButton: Button
     private lateinit var controller: WebViewSiteBrainController
     private lateinit var brainRepository: SiteBrainRepository
     private lateinit var gapLogger: CapabilityGapLogger
@@ -311,6 +312,11 @@ class OvernightLearningActivity : AppCompatActivity() {
             }
         })
         row3.addView(requestedLogsButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        loginButton = compact(Button(this).apply {
+            text = "LOGIN"
+            setOnClickListener { openDedicatedSiteLogin() }
+        })
+        row3.addView(loginButton, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row3)
 
         webView = WebView(this).apply {
@@ -530,6 +536,18 @@ class OvernightLearningActivity : AppCompatActivity() {
         }
         record("CROSS_SITE_NAVIGATION", "BLOCKED", host, Uri.parse(rawUrl).path.orEmpty(), "Training kept inside ${site.expectedHost}")
         return true
+    }
+
+    private fun openDedicatedSiteLogin() {
+        if (stopped || authScreenOpen) return
+        val site = activeSite ?: return
+        val loginUrl = site.loginUrl
+        if (loginUrl.isNullOrBlank()) {
+            Toast.makeText(this, "No dedicated login page is configured for ${site.name}.", Toast.LENGTH_LONG).show()
+            return
+        }
+        record("HUMAN_AUTH", "MANUAL_LOGIN_OPENED", site.expectedHost, "", "Dedicated login button opened the site sign-in flow")
+        openHumanSignIn(loginUrl)
     }
 
     private fun openHumanSignIn(authUrl: String) {

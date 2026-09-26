@@ -12,7 +12,7 @@ class OutcomeVerifierTest {
         val edge = edge(ActionKind.SEARCH, PageType.RESULT_LIST)
         val result = OutcomeVerifier.verify(before, edge, after)
         assertTrue(result.success)
-        assertTrue(result.evidence.any { it.contains("expected page type") })
+        assertTrue(result.evidence.any { it.contains("page type reached") })
     }
 
     @Test

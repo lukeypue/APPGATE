@@ -27,17 +27,16 @@ object SiteExplorer {
 
         // SiteBrainState visitCount is lifetime knowledge, not this run's revisit count.
         // Do not abandon a well-known state merely because it has been observed in earlier app versions.
-        val alreadyTried = state.edges
+        val learnedOutcomes = state.edges
             .filter { it.fromFingerprint == snapshot.fingerprint && it.successCount + it.failureCount > 0 }
-            .map { normalize(it.label) to it.actionKind }
-            .toSet()
+            .associateBy({ normalize(it.label) to it.actionKind }, { it })
 
         val candidates = snapshot.elements.asSequence()
             .filter { SafeActionClassifier.classify(it) == SafetyClass.SAFE }
             .map { element ->
                 val kind = SafeActionClassifier.inferActionKind(element)
                 val key = normalize(element.label) to kind
-                Triple(element, kind, score(element, kind, key !in alreadyTried))
+                Triple(element, kind, score(element, kind, learnedOutcomes[key]))
             }
             .filter { it.second != ActionKind.UNKNOWN && it.third > 0 }
             .sortedByDescending { it.third }
@@ -48,8 +47,14 @@ object SiteExplorer {
         return ExplorerDecision.Act(best.first, best.second, intent)
     }
 
-    private fun score(element: SemanticElement, kind: ActionKind, unexplored: Boolean): Int {
-        var score = if (unexplored) 100 else -40
+    private fun score(element: SemanticElement, kind: ActionKind, learned: SiteEdge?): Int {
+        // New controls deserve exploration, but a route that has already been verified should
+        // become a reusable skill rather than being treated as "already tried" and avoided.
+        var score = when {
+            learned == null -> 100
+            learned.successCount > 0 && learned.successCount >= learned.failureCount -> 135 + (learned.successCount.coerceAtMost(10) * 4)
+            else -> -40 - (learned.failureCount.coerceAtMost(10) * 5)
+        }
         score += when (kind) {
             ActionKind.SEARCH -> 90
             ActionKind.OPEN_CATEGORY -> 80

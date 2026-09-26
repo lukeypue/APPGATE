@@ -104,11 +104,13 @@ class MainActivity : AppCompatActivity() {
         column.addView(rememberSignIns)
         column.addView(text("Recommended: ON. AI Browser does not save your password; each website's normal WebView cookies keep you signed in. CAPTCHA, 2FA and credentials remain human-only.", 12f, Color.rgb(150, 170, 195)).apply { setPadding(4, 0, 0, 10) })
 
-        column.addView(Button(this).apply {
-            text = "Connect Facebook Marketplace (1-time sign-in)"
-            setOnClickListener { openFacebookMarketplace() }
-        })
-        column.addView(text("Do this once before training or searching Marketplace. Sign in to Facebook in the page that opens, then press Back to return here.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 0, 0, 14) })
+        column.addView(text("CONNECTED SITES", 19f, Color.WHITE, true).apply { setPadding(0, 12, 0, 6) })
+        column.addView(text("You control which private/account sites AI Browser can use. Sign in here yourself; Site Brain never types your password or completes CAPTCHA/2FA.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 0, 0, 8) })
+        addSiteConnectButton(column, "Facebook Marketplace", "https://www.facebook.com/marketplace/")
+        addSiteConnectButton(column, "OfferUp", "https://offerup.com/")
+        addSiteConnectButton(column, "KSL", "https://www.ksl.com/login")
+        addSiteConnectButton(column, "TikTok Shop", "https://www.tiktok.com/shop")
+        addSiteConnectButton(column, "Instagram", "https://www.instagram.com/")
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(Button(this).apply {
@@ -229,9 +231,16 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun openFacebookMarketplace() {
+    private fun addSiteConnectButton(column: LinearLayout, name: String, url: String) {
+        column.addView(Button(this).apply {
+            text = "Connect $name"
+            setOnClickListener { openSiteConnection(url) }
+        })
+    }
+
+    private fun openSiteConnection(url: String) {
         startActivity(Intent(this, ListingActivity::class.java).apply {
-            putExtra("url", "https://www.facebook.com/marketplace/")
+            putExtra("url", url)
             putExtra("rememberSignIns", rememberSignIns.isChecked)
         })
     }

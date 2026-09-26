@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.content.ContentValues
+import android.provider.MediaStore
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -292,8 +294,8 @@ class OvernightLearningActivity : AppCompatActivity() {
             setOnClickListener { startActivity(Intent(this@OvernightLearningActivity, UpdateActivity::class.java)) }
         }), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         row2.addView(compact(Button(this).apply {
-            text = "LOGS"
-            setOnClickListener { shareLogs() }
+            text = "SAVE LOG"
+            setOnClickListener { saveLearningLogToDownloads() }
         }), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row2)
         updateAiTeacherButton()
@@ -1360,6 +1362,39 @@ class OvernightLearningActivity : AppCompatActivity() {
         requestedLogsButton.text = "GITHUB LOGS"
         record("GITHUB_LOG_REQUEST", "BUNDLED", activeSite?.expectedHost.orEmpty(), "", request.requestId)
         startActivity(Intent.createChooser(intent, "Send both requested logs"))
+    }
+
+    private fun saveLearningLogToDownloads() {
+        persistLog(force = true)
+        val file = File(filesDir, LOG_FILE)
+        if (!file.exists()) {
+            Toast.makeText(this, "No learning log file exists yet.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, LOG_FILE)
+            put(MediaStore.Downloads.MIME_TYPE, "application/json")
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val uri = contentResolver.insert(collection, values)
+        if (uri == null) {
+            Toast.makeText(this, "Could not create the log in Downloads.", Toast.LENGTH_LONG).show()
+            return
+        }
+        runCatching {
+            contentResolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input -> input.copyTo(output) }
+            } ?: error("Could not open Downloads file")
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+        }.onSuccess {
+            Toast.makeText(this, "Saved $LOG_FILE to Downloads.", Toast.LENGTH_LONG).show()
+        }.onFailure {
+            contentResolver.delete(uri, null, null)
+            Toast.makeText(this, "Could not save the learning log.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun shareLogs() {

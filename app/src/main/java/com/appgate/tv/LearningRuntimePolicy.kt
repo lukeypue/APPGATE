@@ -5,7 +5,7 @@ object LearningRuntimePolicy {
     const val maxMinutesPerVisit: Long = 45L
     // Central floor for automatic site rotation. Individual recovery paths may request a move,
     // but none of them may churn through sites before the learner has had time to inspect one.
-    const val minAutomaticSiteDwellMs: Long = 120_000L
+    const val minAutomaticSiteDwellMs: Long = 10 * 60_000L
     const val noProgressAutoSkipMs: Long = 90_000L
     // A WebView JavaScript callback can occasionally never return. The normal watchdog used to
     // ignore that state while pageSettling/actionInFlight was true, which could leave a run frozen

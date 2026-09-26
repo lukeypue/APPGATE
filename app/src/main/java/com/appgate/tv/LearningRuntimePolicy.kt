@@ -3,7 +3,7 @@ package com.appgate.tv
 object LearningRuntimePolicy {
     const val maxActionsPerVisit: Int = 1200
     const val maxMinutesPerVisit: Long = 45L
-    const val noProgressAutoSkipMs: Long = 30_000L
+    const val noProgressAutoSkipMs: Long = 90_000L
     const val maxLogEvents: Int = 8_000
     const val maxSameActionPerRoute: Int = 3
     const val logPersistEveryEvents: Int = 250

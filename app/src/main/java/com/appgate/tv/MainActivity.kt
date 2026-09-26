@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
                     .onFailure { error -> Toast.makeText(this@MainActivity, error.message ?: "Could not save the learning log.", Toast.LENGTH_LONG).show() }
             }
         })
-        column.addView(text("After saving, attach the JSON from Downloads directly to the AI Browser project chat.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
+        column.addView(text("After saving, attach the JSON from Downloads directly to the AI Browser project chat. Mapping and verification are separate: a site is only considered trained when learned routes also verify and repeat reliably.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
 
         column.addView(CheckBox(this).apply {
             text = "Automatically download verified AI Browser updates"

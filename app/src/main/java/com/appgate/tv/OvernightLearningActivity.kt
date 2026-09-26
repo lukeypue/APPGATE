@@ -353,7 +353,6 @@ class OvernightLearningActivity : AppCompatActivity() {
                     mainFrameLoading = true
                     pageSettling = false
                     touchProgress()
-                    if (awaitingInitialPage) webView.visibility = View.INVISIBLE
                 }
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -605,12 +604,15 @@ class OvernightLearningActivity : AppCompatActivity() {
         pendingAutomaticSiteMove = false
         controller.markHumanResume()
         awaitingInitialPage = true
-        webView.visibility = View.INVISIBLE
+        // Keep the browser visible while switching sites. The previous implementation hid
+        // WebView until onPageFinished; modern SPAs can render useful content and then keep
+        // network activity alive long enough that onPageFinished is delayed or never arrives.
+        // That produced the black KSL screen even though the page briefly rendered.
+        webView.visibility = View.VISIBLE
         status.text = "Learning ${site.name}\nLoading this site in a fresh visual session…"
         record("SITE_START", "STARTED", site.expectedHost, "", "root=${site.startUrl}; overnight=true")
         saveCheckpoint()
         webView.stopLoading()
-        // Trim the previous site's render tree before a long cross-site learning hop.
         webView.loadUrl("about:blank")
         handler.postDelayed({
             if (!stopped && !userPaused && activeSessionId == session.id) webView.loadUrl(site.startUrl)

@@ -31,12 +31,24 @@ object SiteExplorer {
             .filter { it.fromFingerprint == snapshot.fingerprint && it.successCount + it.failureCount > 0 }
             .associateBy({ normalize(it.label) to it.actionKind }, { it })
 
+        // Also transfer generic skills across page fingerprints on the same host. Dynamic sites
+        // frequently change fingerprints even though controls such as Search, Price, Next and
+        // Details still mean the same thing. Prefer a proven semantic route when the local page
+        // has not learned one yet.
+        val transferableOutcomes = state.edges
+            .filter { it.successCount + it.failureCount > 0 }
+            .groupBy { normalize(it.label) to it.actionKind }
+            .mapValues { (_, edges) ->
+                edges.maxWithOrNull(compareBy<SiteEdge> { it.successCount - it.failureCount }.thenBy { it.lastVerifiedAt ?: 0L })
+            }
+
         val candidates = snapshot.elements.asSequence()
             .filter { SafeActionClassifier.classify(it) == SafetyClass.SAFE }
             .map { element ->
                 val kind = SafeActionClassifier.inferActionKind(element)
                 val key = normalize(element.label) to kind
-                Triple(element, kind, score(element, kind, learnedOutcomes[key]))
+                val learned = learnedOutcomes[key] ?: transferableOutcomes[key]
+                Triple(element, kind, score(element, kind, learned))
             }
             .filter { it.second != ActionKind.UNKNOWN && it.third > 0 }
             .sortedByDescending { it.third }

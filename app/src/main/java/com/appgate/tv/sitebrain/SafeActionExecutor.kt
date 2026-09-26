@@ -62,8 +62,11 @@ object SafeActionExecutor {
                   if(!el) return 'MISSING';
                   if(el.disabled || el.getAttribute('aria-disabled')==='true') return 'DISABLED';
                   el.focus();
-                  el.value=${jsString(value)};
-                  el.dispatchEvent(new Event('input',{bubbles:true}));
+                  var tag=(el.tagName||'').toLowerCase();
+                  var proto=tag==='textarea'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+                  var desc=Object.getOwnPropertyDescriptor(proto,'value');
+                  if(desc && desc.set) desc.set.call(el,${jsString(value)}); else el.value=${jsString(value)};
+                  el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:${jsString(value)}}));
                   el.dispatchEvent(new Event('change',{bubbles:true}));
                   var form=el.form || (el.closest ? el.closest('form') : null);
                   if(form){
@@ -72,9 +75,13 @@ object SafeActionExecutor {
                     if(typeof form.submit==='function') form.submit();
                     return 'SUBMITTED';
                   }
+                  var scope=el.closest ? (el.closest('[role="search"]') || el.parentElement) : el.parentElement;
+                  var submit=scope && scope.querySelector ? scope.querySelector('button[type="submit"],input[type="submit"],button[aria-label*="search" i],[role="button"][aria-label*="search" i]') : null;
+                  if(submit && !submit.disabled){ submit.click(); return 'SUBMITTED'; }
                   var kd=new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true});
+                  var kp=new KeyboardEvent('keypress',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true});
                   var ku=new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true,cancelable:true});
-                  el.dispatchEvent(kd); el.dispatchEvent(ku);
+                  el.dispatchEvent(kd); el.dispatchEvent(kp); el.dispatchEvent(ku);
                   return 'ENTER';
                 })();
             """.trimIndent()

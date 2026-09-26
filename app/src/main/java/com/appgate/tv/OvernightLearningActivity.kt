@@ -524,13 +524,30 @@ class OvernightLearningActivity : AppCompatActivity() {
 
     private fun allowNavigation(rawUrl: String): Boolean {
         val site = activeSite ?: return false
-        val host = runCatching { Uri.parse(rawUrl).host.orEmpty() }.getOrDefault("")
+        val parsed = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return true
+        val scheme = parsed.scheme.orEmpty().lowercase()
+        val host = parsed.host.orEmpty()
+
+        // App/deep-link schemes (Instagram, TikTok, etc.) are not webpages. Never let
+        // WebView navigate to them: doing so replaces a healthy page with
+        // ERR_UNKNOWN_URL_SCHEME and poisons the learning pass.
+        if (scheme != "http" && scheme != "https") {
+            record(
+                "APP_DEEP_LINK",
+                "BLOCKED_KEEPING_WEB_PAGE",
+                host,
+                parsed.path.orEmpty(),
+                "Ignored external scheme '$scheme'; Site Brain remains on the current web page"
+            )
+            touchProgress()
+            return true
+        }
         if (site.acceptsHost(host)) return false
         if (LearningNavigationPolicy.isKnownAuthHost(host)) {
             openHumanSignIn(rawUrl)
             return true
         }
-        record("CROSS_SITE_NAVIGATION", "BLOCKED", host, Uri.parse(rawUrl).path.orEmpty(), "Training kept inside ${site.expectedHost}")
+        record("CROSS_SITE_NAVIGATION", "BLOCKED", host, parsed.path.orEmpty(), "Training kept inside ${site.expectedHost}")
         return true
     }
 

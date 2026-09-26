@@ -58,6 +58,17 @@ class MainActivity : AppCompatActivity() {
         })
         column.addView(text("Use this for future versions instead of uninstalling. Android installs the new APK over this app so the Site Brain store, learning checkpoint, cookies and learning logs remain in the app data area.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
 
+        column.addView(Button(this).apply {
+            text = "SAVE LEARNING LOG TO DOWNLOADS"
+            textSize = 17f
+            setOnClickListener {
+                LearningLogExporter.saveToDownloads(this@MainActivity)
+                    .onSuccess { name -> Toast.makeText(this@MainActivity, "Saved $name to Downloads.", Toast.LENGTH_LONG).show() }
+                    .onFailure { error -> Toast.makeText(this@MainActivity, error.message ?: "Could not save the learning log.", Toast.LENGTH_LONG).show() }
+            }
+        })
+        column.addView(text("After saving, attach the JSON from Downloads directly to the AI Browser project chat.", 12f, Color.rgb(170, 195, 220)).apply { setPadding(4, 2, 0, 14) })
+
         column.addView(CheckBox(this).apply {
             text = "Automatically download verified AI Browser updates"
             setTextColor(Color.WHITE)

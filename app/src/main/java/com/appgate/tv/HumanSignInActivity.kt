@@ -45,8 +45,14 @@ class HumanSignInActivity : AppCompatActivity() {
         root.addView(Button(this).apply {
             text = "DONE — RETURN TO LEARNING"
             setOnClickListener {
-                setResult(RESULT_OK)
-                finish()
+                if (returnedToTarget) {
+                    geckoView.releaseSession()
+                    AuthenticatedGeckoSessionStore.retain(targetHost, session)
+                    setResult(RESULT_OK, Intent().putExtra("geckoSessionRetained", true))
+                    finish()
+                } else {
+                    status.text = "Sign-in has not returned to $targetName yet. Finish Google/2-step verification first."
+                }
             }
         })
 
@@ -126,7 +132,7 @@ class HumanSignInActivity : AppCompatActivity() {
         if (::geckoView.isInitialized) runCatching { geckoView.releaseSession() }
         // Keep authenticated Gecko state in the shared runtime. The session itself is closed
         // because the learning screen currently uses a different renderer.
-        if (::session.isInitialized) runCatching { session.close() }
+        if (::session.isInitialized && !AuthenticatedGeckoSessionStore.hasSessionFor(targetHost)) runCatching { session.close() }
         super.onDestroy()
     }
 }

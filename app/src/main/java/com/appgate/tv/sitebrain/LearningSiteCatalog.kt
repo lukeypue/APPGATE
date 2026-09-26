@@ -31,13 +31,13 @@ object LearningSiteCatalog {
             "ksl_classifieds",
             "KSL Classifieds",
             "https://classifieds.ksl.com/",
-            "classifieds.ksl.com"
+            "ksl.com"
         ),
         LearningSite(
             "ksl_cars",
             "KSL Cars",
             "https://cars.ksl.com/",
-            "cars.ksl.com"
+            "ksl.com"
         ),
         LearningSite(
             "facebook_marketplace",

@@ -21,7 +21,7 @@ class LearningPlateauPolicyTest {
     fun repeatedPlateausAfterUsefulExplorationCanMoveOn() {
         assertTrue(
             LearningPlateauPolicy.shouldMoveOn(
-                consecutivePlateaus = 4,
+                consecutivePlateaus = 8,
                 actionsThisSite = 12,
                 verifiedThisSite = 2,
                 elapsedMs = 120_000L
@@ -33,7 +33,7 @@ class LearningPlateauPolicyTest {
     fun hardPlateauCapEndsUnproductiveLoop() {
         assertTrue(
             LearningPlateauPolicy.shouldMoveOn(
-                consecutivePlateaus = 8,
+                consecutivePlateaus = 12,
                 actionsThisSite = 0,
                 verifiedThisSite = 0,
                 elapsedMs = 90_000L

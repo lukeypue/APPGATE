@@ -74,6 +74,22 @@ class FacebookMarketplaceMiniBrain : SiteMiniBrain {
             )
         }
 
+        scored.firstOrNull { it.second == MiniBrainIntent.SORT }?.let { (c, _) ->
+            return MiniBrainDecision(
+                MiniBrainIntent.SORT,
+                c.id,
+                "Learn Marketplace sort controls after search, filters, categories, and results"
+            )
+        }
+
+        scored.firstOrNull { it.second == MiniBrainIntent.PAGINATE }?.let { (c, _) ->
+            return MiniBrainDecision(
+                MiniBrainIntent.PAGINATE,
+                c.id,
+                "Learn safe result pagination after higher-value Marketplace controls"
+            )
+        }
+
         return null
     }
 }

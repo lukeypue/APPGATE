@@ -4,6 +4,10 @@ object LearningRuntimePolicy {
     const val maxActionsPerVisit: Int = 1200
     const val maxMinutesPerVisit: Long = 45L
     const val noProgressAutoSkipMs: Long = 90_000L
+    // A WebView JavaScript callback can occasionally never return. The normal watchdog used to
+    // ignore that state while pageSettling/actionInFlight was true, which could leave a run frozen
+    // for hours. This wall-clock limit deliberately ignores those transient flags.
+    const val hardFreezeRecoveryMs: Long = 180_000L
     const val maxLogEvents: Int = 8_000
     const val maxSameActionPerRoute: Int = 3
     const val logPersistEveryEvents: Int = 250
@@ -15,6 +19,9 @@ object LearningRuntimePolicy {
     fun shouldAutoSkip(stalledForMs: Long, waitingForHuman: Boolean): Boolean {
         return stalledForMs >= noProgressAutoSkipMs
     }
+
+    fun shouldHardRecover(stalledForMs: Long, waitingForHuman: Boolean, authScreenOpen: Boolean): Boolean =
+        !waitingForHuman && !authScreenOpen && stalledForMs >= hardFreezeRecoveryMs
 
     fun shouldTrySameRouteAction(previousAttempts: Int): Boolean =
         previousAttempts < maxSameActionPerRoute
